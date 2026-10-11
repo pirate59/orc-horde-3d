@@ -67,8 +67,8 @@ namespace OrcHordeFps
         public static void BuildVisual(TowerDef def, Transform root, out Transform head, out Transform muzzle)
         {
             float r = def.Footprint;
-            var metal = Mats.Lit(U.Hex(0x3b4047));
-            var paint = Mats.Lit(def.Color);
+            var metal = Mats.Textured("metal", U.Hex(0x6a717a), smoothness: 0.45f, metallic: 0.5f);
+            var paint = Mats.Textured("metal", def.Color, smoothness: 0.35f, metallic: 0.2f);
             var glow = Mats.Lit(def.Color, 2f);
 
             Shapes.Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0.15f, 0), new Vector3(r * 2, 0.15f, r * 2), metal);

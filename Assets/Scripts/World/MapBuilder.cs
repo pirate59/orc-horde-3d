@@ -18,6 +18,11 @@ namespace OrcHordeFps
         public const float TowerGroundHeight = 0.35f;
         const float CliffMin = 4.5f, CliffVariance = 3.5f;
         const int ChunkSize = 16;
+        /// <summary>Metres per texture repeat on the path, on platform tops and up cliff faces.</summary>
+        const float PathTile = 4f, TopTile = 3f, SideTile = 3.5f;
+
+        /// <summary>A grey vertex colour: per-cell light and dark on top of the texture.</summary>
+        static Color Shade(float v) => new Color(v, v, v, 1);
 
         static readonly List<NavMeshDataInstance> navData = new List<NavMeshDataInstance>();
 
@@ -36,7 +41,21 @@ namespace OrcHordeFps
                 new Vector3(map.Width + 40, 0.5f, map.Depth + 40), Mats.Lit(floorColor * 0.8f), collider: true);
             floor.name = "Backstop";
 
-            var terrain = Mats.VertexLit();
+            // Textures: Orc Horde's painted biome tiles on the path and the tower ground, the
+            // baked cliff face on every side. Cliff tops reuse the rock slabs, darker.
+            string biome = System.Array.IndexOf(new[] { "grassland", "canyon", "snow", "dirt" }, map.biome) >= 0 ? map.biome : "dirt";
+            var cliffTint = new Color(Mathf.Min(1, rockColor.r * 1.9f), Mathf.Min(1, rockColor.g * 1.9f), Mathf.Min(1, rockColor.b * 1.9f));
+            var rockMats = new[]
+            {
+                Mats.Terrain($"ground_{biome}", biome == "snow" ? new Color(0.92f, 0.94f, 0.98f) : new Color(0.62f, 0.6f, 0.58f)),
+                Mats.Terrain("cliff", cliffTint, 1.2f),
+            };
+            var groundMats = new[]
+            {
+                Mats.Terrain($"ground_{biome}", new Color(1.05f, 1.02f, 0.96f)),
+                Mats.Terrain("cliff", Color.Lerp(cliffTint, groundColor, 0.4f), 1.2f),
+            };
+            var pathMats = new[] { Mats.Terrain($"path_{biome}", Color.white, 0.8f) };
             var edgeMat = Mats.Lit(U.Hex(0x3ec9e0), 1.2f);
             var corners = grid.CornerOffsets();
             var links = map.links ?? new MapLink[0];
@@ -59,36 +78,30 @@ namespace OrcHordeFps
 
                     if (HexGrid.IsPath(kind))
                     {
-                        var tint = floorColor * (0.92f + noise * 0.16f);
-                        tint.a = 1;
-                        path.AddTop(center, corners, tint);
+                        path.AddTop(center, corners, Shade(0.9f + noise * 0.15f), PathTile);
                         continue;
                     }
 
                     bool cliff = kind == HexGrid.Rock;
-                    var top = cliff ? rockColor * (1.05f + noise * 0.25f) : groundColor * (0.9f + noise * 0.2f);
-                    if (cliff && map.biome == "snow") top = Color.Lerp(top, Color.white, 0.55f);
-                    top.a = 1;
-                    var side = (cliff ? rockColor : groundColor) * (0.7f + noise * 0.15f);
-                    side.a = 1;
                     var batch = cliff ? rock : ground;
-                    batch.AddTop(center + Vector3.up * h, corners, top);
+                    batch.AddTop(center + Vector3.up * h, corners, Shade(0.85f + noise * 0.25f), TopTile);
+                    var side = Shade(0.78f + noise * 0.2f);
 
                     for (int s = 0; s < 6; s++)
                     {
                         var n = HexGrid.Across(c, r, s);
                         float nh = Height(map, grid, links, n.x, n.y);
                         if (nh >= h) continue;
-                        batch.AddSide(center, corners[s], corners[(s + 1) % 6], nh, h, side);
+                        batch.AddSide(center, corners[s], corners[(s + 1) % 6], nh, h, side, SideTile);
                         if (!cliff && HexGrid.IsPath(grid.Kind(n)))
                             edges.AddStrip(center, corners[s], corners[(s + 1) % 6], h + 0.01f, 0.08f);
                     }
                 }
 
-                rock.Emit(root, "Rock", terrain, Layers.Rock, collider: true);
-                ground.Emit(root, "Tower ground", terrain, Layers.BuildGround, collider: true);
-                path.Emit(root, "Path", terrain, Layers.Road, collider: true);
-                edges.Emit(root, "Build edge", edgeMat, -1, collider: false);
+                rock.Emit(root, "Rock", rockMats, Layers.Rock, collider: true);
+                ground.Emit(root, "Tower ground", groundMats, Layers.BuildGround, collider: true);
+                path.Emit(root, "Path", pathMats, Layers.Road, collider: true);
+                edges.Emit(root, "Build edge", new[] { edgeMat }, -1, collider: false);
             }
 
             BuildBounds(map, root);
@@ -179,11 +192,12 @@ namespace OrcHordeFps
             gate.rotation = Quaternion.LookRotation(inward);
             float half = (hi + lo) / 2 + 1.2f;
 
-            var stone = Mats.Lit(U.Hex(0x2a2522));
+            var stone = Mats.Textured("stone", U.Hex(0x8a7f78), new Vector2(1, 3));
+            var lintel = Mats.Textured("stone", U.Hex(0x8a7f78), new Vector2(6, 1));
             var glow = Mats.Lit(U.Hex(0xff3355), 2f);
             Shapes.Prim(PrimitiveType.Cube, gate, new Vector3(-half, 3.5f, 0), new Vector3(1.2f, 7, 1.2f), stone);
             Shapes.Prim(PrimitiveType.Cube, gate, new Vector3(half, 3.5f, 0), new Vector3(1.2f, 7, 1.2f), stone);
-            Shapes.Prim(PrimitiveType.Cube, gate, new Vector3(0, 7.2f, 0), new Vector3(half * 2 + 1.2f, 0.8f, 1.4f), stone);
+            Shapes.Prim(PrimitiveType.Cube, gate, new Vector3(0, 7.2f, 0), new Vector3(half * 2 + 1.2f, 0.8f, 1.4f), lintel);
             Shapes.Prim(PrimitiveType.Cube, gate, new Vector3(0, 7.2f, 0.75f), new Vector3(half * 2, 0.25f, 0.1f), glow);
             var light = new GameObject("Gate light").AddComponent<Light>();
             light.transform.SetParent(gate, false);
@@ -203,7 +217,9 @@ namespace OrcHordeFps
             var outward = -OpenDirection(grid, map.Base);
             yard.rotation = Quaternion.LookRotation(outward);
 
-            var metal = Mats.Lit(U.Hex(0x3a4048));
+            var metal = Mats.Textured("metal", U.Hex(0x6a717a), smoothness: 0.45f, metallic: 0.5f);
+            var crate = Mats.Textured("wood", Color.white);
+            var crateDark = Mats.Textured("wood", new Color(0.75f, 0.7f, 0.65f));
             var mint = Mats.Lit(U.Hex(0x5effc4), 2.5f);
             Shapes.Prim(PrimitiveType.Cylinder, yard, new Vector3(0, 0.3f, 1.5f), new Vector3(4f, 0.3f, 4f), metal, true);
             Shapes.Prim(PrimitiveType.Cylinder, yard, new Vector3(0, 4f, 1.5f), new Vector3(0.6f, 4f, 0.6f), metal, true);
@@ -211,8 +227,8 @@ namespace OrcHordeFps
             Shapes.Prim(PrimitiveType.Cylinder, yard, new Vector3(0, 0.62f, 1.5f), new Vector3(4.4f, 0.02f, 4.4f), mint);
             foreach (var x in new[] { -5f, 5f })
             {
-                Shapes.Prim(PrimitiveType.Cube, yard, new Vector3(x, 0.9f, 0.5f), new Vector3(1.8f, 1.8f, 1.8f), Mats.Lit(U.Hex(0x6b5a3a)), true);
-                Shapes.Prim(PrimitiveType.Cube, yard, new Vector3(x * 0.8f, 0.7f, 1.2f), new Vector3(1.4f, 1.4f, 1.4f), Mats.Lit(U.Hex(0x5a4a30)), true);
+                Shapes.Prim(PrimitiveType.Cube, yard, new Vector3(x, 0.9f, 0.5f), new Vector3(1.8f, 1.8f, 1.8f), crate, true);
+                Shapes.Prim(PrimitiveType.Cube, yard, new Vector3(x * 0.8f, 0.7f, 1.2f), new Vector3(1.4f, 1.4f, 1.4f), crateDark, true);
             }
             var light = new GameObject("Beacon light").AddComponent<Light>();
             light.transform.SetParent(yard, false);
@@ -248,36 +264,49 @@ namespace OrcHordeFps
             navData.Clear();
         }
 
-        /// <summary>Gathers faces with flat normals and vertex colours, then emits them as one mesh.</summary>
+        /// <summary>
+        /// Gathers faces with flat normals, vertex colours and world-space UVs, in
+        /// two submeshes: tops (0) and sides (1), so each can take its own texture.
+        /// </summary>
         sealed class MeshBatch
         {
             readonly List<Vector3> verts = new List<Vector3>();
             readonly List<Color> colors = new List<Color>();
-            readonly List<int> tris = new List<int>();
+            readonly List<Vector2> uvs = new List<Vector2>();
+            readonly List<int>[] tris = { new List<int>(), new List<int>() };
 
             /// <summary>Adds a triangle, wound so its face points along <paramref name="outward"/>.</summary>
-            void Tri(Vector3 a, Vector3 b, Vector3 c, Vector3 outward, Color col)
+            void Tri(int sub, Vector3 a, Vector3 b, Vector3 c, Vector2 ua, Vector2 ub, Vector2 uc, Vector3 outward, Color col)
             {
-                if (Vector3.Dot(Vector3.Cross(b - a, c - a), outward) < 0) (b, c) = (c, b);
+                if (Vector3.Dot(Vector3.Cross(b - a, c - a), outward) < 0) { (b, c) = (c, b); (ub, uc) = (uc, ub); }
                 int i = verts.Count;
                 verts.Add(a); verts.Add(b); verts.Add(c);
+                uvs.Add(ua); uvs.Add(ub); uvs.Add(uc);
                 colors.Add(col); colors.Add(col); colors.Add(col);
-                tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);
+                tris[sub].Add(i); tris[sub].Add(i + 1); tris[sub].Add(i + 2);
             }
 
-            public void AddTop(Vector3 center, Vector3[] corners, Color col)
+            static Vector2 Plan(Vector3 p, float tile) => new Vector2(p.x, p.z) / tile;
+
+            public void AddTop(Vector3 center, Vector3[] corners, Color col, float tile)
             {
                 for (int i = 0; i < 6; i++)
-                    Tri(center, center + corners[i], center + corners[(i + 1) % 6], Vector3.up, col);
+                {
+                    Vector3 a = center, b = center + corners[i], c = center + corners[(i + 1) % 6];
+                    Tri(0, a, b, c, Plan(a, tile), Plan(b, tile), Plan(c, tile), Vector3.up, col);
+                }
             }
 
-            public void AddSide(Vector3 center, Vector3 a, Vector3 b, float low, float high, Color col)
+            /// <summary>A wall face; its texture runs along the edge and up the height, continuous between neighbours.</summary>
+            public void AddSide(Vector3 center, Vector3 a, Vector3 b, float low, float high, Color col, float tile)
             {
                 var outward = (a + b) / 2;
                 Vector3 a0 = center + a + Vector3.up * low, b0 = center + b + Vector3.up * low;
                 Vector3 a1 = center + a + Vector3.up * high, b1 = center + b + Vector3.up * high;
-                Tri(a0, b0, b1, outward, col);
-                Tri(a0, b1, a1, outward, col);
+                var along = (b - a).normalized;
+                Vector2 Uv(Vector3 p) => new Vector2(Vector3.Dot(p, along), p.y) / tile;
+                Tri(1, a0, b0, b1, Uv(a0), Uv(b0), Uv(b1), outward, col);
+                Tri(1, a0, b1, a1, Uv(a0), Uv(b1), Uv(a1), outward, col);
             }
 
             /// <summary>A thin flat strip along a top edge, inset from it.</summary>
@@ -285,25 +314,31 @@ namespace OrcHordeFps
             {
                 var inset = -((a + b) / 2).normalized * width;
                 Vector3 p0 = center + a + Vector3.up * y, p1 = center + b + Vector3.up * y;
-                Tri(p0, p1, p1 + inset, Vector3.up, Color.white);
-                Tri(p0, p1 + inset, p0 + inset, Vector3.up, Color.white);
+                Tri(0, p0, p1, p1 + inset, Vector2.zero, Vector2.zero, Vector2.zero, Vector3.up, Color.white);
+                Tri(0, p0, p1 + inset, p0 + inset, Vector2.zero, Vector2.zero, Vector2.zero, Vector3.up, Color.white);
             }
 
-            public void Emit(Transform root, string name, Material mat, int layer, bool collider)
+            public void Emit(Transform root, string name, Material[] mats, int layer, bool collider)
             {
                 if (verts.Count == 0) return;
                 var mesh = new Mesh { name = name, indexFormat = IndexFormat.UInt32 };
                 mesh.SetVertices(verts);
                 mesh.SetColors(colors);
-                mesh.SetTriangles(tris, 0);
+                mesh.SetUVs(0, uvs);
+                int subs = mats.Length;
+                mesh.subMeshCount = subs;
+                for (int s = 0; s < subs; s++) mesh.SetTriangles(s < tris.Length ? tris[s] : new List<int>(), s);
+                // Faces meant for a submesh this batch has no material for join the first.
+                if (subs == 1 && tris[1].Count > 0) { var all = new List<int>(tris[0]); all.AddRange(tris[1]); mesh.SetTriangles(all, 0); }
                 mesh.RecalculateNormals();
+                mesh.RecalculateTangents();
                 mesh.RecalculateBounds();
 
                 var go = new GameObject(name);
                 go.transform.SetParent(root, false);
                 go.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var mr = go.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = mat;
+                mr.sharedMaterials = mats;
                 if (!collider) mr.shadowCastingMode = ShadowCastingMode.Off;
                 if (collider) go.AddComponent<MeshCollider>().sharedMesh = mesh;
                 if (layer >= 0) go.layer = layer;

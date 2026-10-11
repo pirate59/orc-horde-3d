@@ -44,6 +44,47 @@ namespace OrcHordeFps
             return m;
         }
 
+        static readonly Dictionary<(string, Color, Vector2), Material> textured = new Dictionary<(string, Color, Vector2), Material>();
+        static readonly Dictionary<(string, Color), Material> terrain = new Dictionary<(string, Color), Material>();
+
+        public static Texture2D Tex(string name) => Resources.Load<Texture2D>("Art/" + name);
+
+        /// <summary>
+        /// A Standard material with one of the baked textures and its normal map,
+        /// tinted. <paramref name="tiling"/> repeats it across a primitive whose
+        /// one-tile-per-face UVs would otherwise stretch it.
+        /// </summary>
+        public static Material Textured(string texture, Color tint, Vector2 tiling = default, float smoothness = 0.25f, float metallic = 0f)
+        {
+            if (tiling == default) tiling = Vector2.one;
+            if (textured.TryGetValue((texture, tint, tiling), out var m)) return m;
+            m = new Material(Shader.Find("Standard")) { color = tint, mainTexture = Tex(texture) };
+            m.mainTextureScale = tiling;
+            var normal = Tex(texture + "_n");
+            if (normal != null)
+            {
+                m.SetTexture("_BumpMap", normal);
+                m.SetTextureScale("_BumpMap", tiling);
+                m.EnableKeyword("_NORMALMAP");
+            }
+            m.SetFloat("_Glossiness", smoothness);
+            m.SetFloat("_Metallic", metallic);
+            textured[(texture, tint, tiling)] = m;
+            return m;
+        }
+
+        /// <summary>Terrain: a baked texture with its normal map, tinted, and varied per cell by the mesh's vertex colours.</summary>
+        public static Material Terrain(string texture, Color tint, float bump = 1f)
+        {
+            if (terrain.TryGetValue((texture, tint), out var m)) return m;
+            m = new Material(Shader.Find("OrcHorde/TexturedVertexLit")) { color = tint, mainTexture = Tex(texture) };
+            var normal = Tex(texture + "_n");
+            if (normal != null) m.SetTexture("_BumpMap", normal);
+            m.SetFloat("_BumpScale", bump);
+            terrain[(texture, tint)] = m;
+            return m;
+        }
+
         static Material vertexLit;
 
         /// <summary>Lit, coloured by the mesh's vertex colours: for the combined terrain.</summary>

@@ -65,7 +65,7 @@ namespace OrcHordeFps
             {
                 // Dark mouths in the rock at both faces.
                 var dark = Mats.Lit(U.Hex(0x0a0b0d));
-                var stone = Mats.Lit(U.Hex(0x2a2522));
+                var stone = Mats.Textured("stone", U.Hex(0x8a7f78), new Vector2(4, 1));
                 foreach (var end in new[] { -1f, 1f })
                 {
                     Shapes.Prim(PrimitiveType.Cube, go, new Vector3(0, 1.8f, end * (length / 2 + 0.05f)), new Vector3(width * 0.8f, 3.6f, 0.2f), dark);
@@ -74,8 +74,8 @@ namespace OrcHordeFps
                 return;
             }
 
-            var deck = Mats.Lit(U.Hex(0x5a4a3a));
-            var rail = Mats.Lit(U.Hex(0x3a4048));
+            var deck = Mats.Textured("wood", Color.white, new Vector2(3, 6));
+            var rail = Mats.Textured("metal", U.Hex(0x6a717a), new Vector2(1, 8), 0.45f, 0.5f);
             var glow = Mats.Lit(U.Hex(0xffb347), 1.5f);
             // The deck carries a collider on the default layer: the player can stand on it, the navmesh ignores it.
             Shapes.Prim(PrimitiveType.Cube, go, new Vector3(0, DeckHeight - 0.2f, 0), new Vector3(width, 0.4f, length), deck, true);

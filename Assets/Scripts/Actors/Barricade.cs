@@ -62,7 +62,7 @@ namespace OrcHordeFps
             b.intact = BuildVisual(def, go.transform);
             b.rubble = new GameObject("Rubble");
             b.rubble.transform.SetParent(go.transform, false);
-            var wood = Mats.Lit(def.Color * 0.6f);
+            var wood = Mats.Textured("wood", new Color(0.6f, 0.55f, 0.5f));
             for (int i = 0; i < 5; i++)
             {
                 var plank = Shapes.Prim(PrimitiveType.Cube, b.rubble.transform,
@@ -92,9 +92,10 @@ namespace OrcHordeFps
         {
             var root = new GameObject("Intact");
             root.transform.SetParent(parent, false);
-            var wood = Mats.Lit(def.Color);
-            var dark = Mats.Lit(def.Color * 0.7f);
-            var iron = Mats.Lit(U.Hex(0x50555c));
+            // Long boards: the plank texture repeats along them rather than stretching across seven metres.
+            var wood = Mats.Textured("wood", Color.white, new Vector2(3, 1));
+            var dark = Mats.Textured("wood", new Color(0.7f, 0.65f, 0.6f), new Vector2(0.5f, 2));
+            var iron = Mats.Textured("metal", U.Hex(0x707780), new Vector2(6, 1), 0.4f, 0.5f);
             float half = def.Length / 2;
             foreach (var x in new[] { -half + 0.15f, -half / 3, half / 3, half - 0.15f })
                 Shapes.Prim(PrimitiveType.Cube, root.transform, new Vector3(x, def.Height / 2 + 0.1f, 0),
