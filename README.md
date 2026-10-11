@@ -75,6 +75,15 @@ Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cel
 
 The head hitbox rides the head bone, and each orc gets a slight random tint. A full 110-orc horde holds 60 fps.
 
+**Towers and rifle.** `TowerModels` builds each tower from the same solids, shaped by how it fights. Each turns and tilts to aim, and sweeps slowly when idle:
+- **Machine Gun:** rotary barrels spin up; belt feed; casings fly out.
+- **Cannon:** elevates to lob, kicks back, smokes.
+- **Laser:** the crystal charges between shots and flares when the beam goes.
+- **Arc Tower:** the toroid turns; bolts strike every orc in the pulse.
+- **Flame Thrower:** the pilot light flickers.
+
+Orcs show what is happening to them: a flash on a hit, an orange flicker and embers while burning, a blue shimmer while slowed. `GunModels` builds the rifle, which has recoil, flash, ejected brass, and a reload in which the magazine drops out and a fresh one seats.
+
 ## Layout
 
 | Path | Purpose |
@@ -122,6 +131,12 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/build" -smokebuild
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/gallery" -smokegallery canyon_approach
+```
+
+**Armoury:** all five towers firing at immortal puppet orcs, then a close-up of each tower and the rifle idle, firing and reloading:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/armory" -smokearmory canyon_approach
 ```
 
 **Stress:** 110 orcs of mixed kinds walking the map at normal speed, with frame times measured:

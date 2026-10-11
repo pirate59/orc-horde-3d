@@ -39,10 +39,13 @@ namespace OrcHordeFps
 
         float S(float v) => v * scale;
 
+        /// <summary>No HUD at all: for clean screenshots.</summary>
+        public static bool Hidden;
+
         void OnGUI()
         {
             var gm = GameManager.I;
-            if (gm == null) return;
+            if (gm == null || Hidden) return;
             EnsureStyles();
 
             DrawBossBars();

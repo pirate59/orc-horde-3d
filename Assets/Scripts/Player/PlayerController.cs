@@ -167,6 +167,15 @@ namespace OrcHordeFps
         /// <summary>The ray from the centre of the screen, or from the mouse in the tactical view.</summary>
         public Ray AimRay => Tactical ? Cam.ScreenPointToRay(Input.mousePosition) : new Ray(Cam.transform.position, Cam.transform.forward);
 
+        /// <summary>Points the player's view: a heading and a pitch (positive looks down).</summary>
+        public void SetView(float newYaw, float newPitch)
+        {
+            yaw = newYaw;
+            pitch = newPitch;
+            transform.rotation = Quaternion.Euler(0, yaw, 0);
+            Cam.transform.localRotation = Quaternion.Euler(pitch, 0, 0);
+        }
+
         /// <summary>A small upward kick on firing.</summary>
         public void Kick(float degrees) => pitch = Mathf.Clamp(pitch - degrees, -85f, 85f);
     }

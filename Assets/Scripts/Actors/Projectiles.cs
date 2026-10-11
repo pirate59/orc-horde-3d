@@ -69,7 +69,12 @@ namespace OrcHordeFps
             transform.position = Vector3.Lerp(from, to, k) + Vector3.up * (4f * apex * k * (1f - k));
             if (k < 1f) return;
             Damage.Splash(to, splash, damage);
-            Fx.Burst(to + Vector3.up * 0.3f, splash, U.Hex(0xffa040), 0.35f);
+            // A short, hot fireball, a ring along the ground showing the splash's reach, and smoke.
+            Fx.Burst(to + Vector3.up * 0.4f, splash * 0.45f, U.Hex(0xffc060), 0.22f);
+            Fx.Ring(to + Vector3.up * 0.1f, splash, U.Hex(0xff8a30), 0.35f);
+            for (int i = 0; i < 4; i++)
+                Fx.Puff(to + Random.insideUnitSphere * splash * 0.3f + Vector3.up * 0.3f, Vector3.up * Random.Range(1f, 2f) + Random.insideUnitSphere * 0.5f,
+                    Random.Range(0.5f, 0.9f), new Color(0.3f, 0.28f, 0.26f, 0.6f), Random.Range(0.6f, 1f));
             Destroy(gameObject);
         }
     }

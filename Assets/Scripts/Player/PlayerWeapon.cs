@@ -24,8 +24,11 @@ namespace OrcHordeFps
         float nextShot, reloadDone;
         bool reloadPending;
         Transform gun, muzzle;
+        GunRig rig;
         Vector3 gunRest;
         Light flash;
+        // Recoil: a push back and a tip up that spring home.
+        float recoil, recoilYaw, bob;
 
         void Awake() => I = this;
 
@@ -34,20 +37,10 @@ namespace OrcHordeFps
             var cam = PlayerController.I.Cam.transform;
             gun = new GameObject("Rifle").transform;
             gun.SetParent(cam, false);
-            gunRest = new Vector3(0.25f, -0.22f, 0.45f);
+            gunRest = new Vector3(0.21f, -0.205f, 0.38f);
             gun.localPosition = gunRest;
-            var dark = Mats.Lit(U.Hex(0x2a2e33));
-            var trim = Mats.Lit(U.Hex(0x5effc4), 1.5f);
-            Shapes.Prim(PrimitiveType.Cube, gun, Vector3.zero, new Vector3(0.08f, 0.1f, 0.5f), dark);
-            Shapes.Prim(PrimitiveType.Cube, gun, new Vector3(0, -0.1f, -0.08f), new Vector3(0.06f, 0.14f, 0.08f), dark);
-            Shapes.Prim(PrimitiveType.Cube, gun, new Vector3(0, 0.065f, 0.05f), new Vector3(0.03f, 0.03f, 0.3f), trim);
-            var barrel = Shapes.Prim(PrimitiveType.Cylinder, gun, new Vector3(0, 0.01f, 0.35f), new Vector3(0.035f, 0.12f, 0.035f), dark);
-            barrel.transform.localRotation = Quaternion.Euler(90, 0, 0);
-            foreach (var r in gun.GetComponentsInChildren<Renderer>())
-                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            muzzle = new GameObject("Muzzle").transform;
-            muzzle.SetParent(gun, false);
-            muzzle.localPosition = new Vector3(0, 0.01f, 0.48f);
+            rig = GunModels.Rifle(gun);
+            muzzle = rig.Muzzle;
 
             flash = muzzle.gameObject.AddComponent<Light>();
             flash.type = LightType.Point;
@@ -59,18 +52,16 @@ namespace OrcHordeFps
         void Update()
         {
             flash.intensity = Mathf.MoveTowards(flash.intensity, 0f, 60f * Time.deltaTime);
-            gun.localPosition = Vector3.Lerp(gun.localPosition, gunRest, 12f * Time.deltaTime);
+            recoil = Mathf.MoveTowards(recoil, 0f, Time.deltaTime * 6f);
+            recoilYaw = Mathf.MoveTowards(recoilYaw, 0f, Time.deltaTime * 20f);
+            Pose();
 
             var pc = PlayerController.I;
             bool building = BuildController.I.Tool != BuildTool.None || pc.Tactical;
             gun.gameObject.SetActive(!building);
             if (!pc.InputLive || building) return;
 
-            if (Reloading)
-            {
-                gun.localPosition = gunRest + new Vector3(0, -0.12f, 0);
-                return;
-            }
+            if (Reloading) return;
             if (reloadPending)
             {
                 Ammo = MagazineSize;
@@ -78,12 +69,52 @@ namespace OrcHordeFps
             }
             if ((Ammo < MagazineSize && Input.GetKeyDown(KeyCode.R)) || Ammo == 0)
             {
-                reloadDone = Time.time + ReloadSeconds;
-                reloadPending = true;
+                StartReload();
                 return;
             }
 
             if (Input.GetMouseButton(0) && Time.time >= nextShot) Fire(pc);
+        }
+
+        /// <summary>One shot along the aim, as if the trigger were pulled: for the smoke test's armoury.</summary>
+        public void DebugFire() => Fire(PlayerController.I);
+
+        public void StartReload()
+        {
+            reloadDone = Time.time + ReloadSeconds;
+            reloadPending = true;
+        }
+
+        /// <summary>
+        /// Where the gun sits this frame: bobbing with the walk, kicked by recoil,
+        /// and through a reload the magazine drops away, a fresh one comes up and
+        /// seats, while the gun rolls over to show the well.
+        /// </summary>
+        void Pose()
+        {
+            float moving = Mathf.Clamp01(new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).magnitude);
+            bob += Time.deltaTime * (moving > 0 ? 9f : 2f);
+            var sway = new Vector3(Mathf.Sin(bob) * 0.006f, Mathf.Abs(Mathf.Cos(bob)) * 0.008f, 0) * (moving > 0 ? 1f : 0.3f);
+
+            float roll = 0, dip = 0;
+            var magOffset = Vector3.zero;
+            if (Reloading)
+            {
+                float p = ReloadProgress;
+                float tilt = p < 0.15f ? p / 0.15f : p > 0.85f ? (1 - p) / 0.15f : 1f;
+                roll = 28f * Mathf.SmoothStep(0, 1, tilt);
+                dip = 0.05f * tilt;
+                // Out (falling away), gone, then up and seated.
+                if (p < 0.12f) magOffset = Vector3.zero;
+                else if (p < 0.38f) magOffset = new Vector3(0, -0.35f, 0.04f) * Mathf.Pow((p - 0.12f) / 0.26f, 2);
+                else if (p < 0.55f) magOffset = new Vector3(0, -0.35f, 0.04f);
+                else if (p < 0.78f) magOffset = new Vector3(0, -0.12f, 0.02f) * (1 - Mathf.SmoothStep(0, 1, (p - 0.55f) / 0.23f));
+            }
+            rig.Magazine.localPosition = rig.MagazineRest + magOffset;
+
+            var target = gunRest + sway + new Vector3(0, -dip, -recoil * 0.08f);
+            gun.localPosition = Vector3.Lerp(gun.localPosition, target, 18f * Time.deltaTime);
+            gun.localRotation = Quaternion.Euler(-recoil * 6f, recoilYaw, roll);
         }
 
         void Fire(PlayerController pc)
@@ -110,8 +141,12 @@ namespace OrcHordeFps
             }
 
             Fx.Line(muzzle.position, end, U.Hex(0xfff0b0), 0.025f, 0.05f);
+            Fx.Burst(muzzle.position, 0.09f, U.Hex(0xffe08a), 0.04f);
             flash.intensity = 4f;
-            gun.localPosition = gunRest + new Vector3(0, 0.01f, -0.06f);
+            recoil = 1f;
+            recoilYaw = Random.Range(-1.2f, 1.2f);
+            var cam = pc.Cam.transform;
+            Fx.Casing(rig.Ejector.position, cam.right * Random.Range(1.6f, 2.4f) + cam.up * Random.Range(1f, 1.8f), U.Hex(0xc8a050), 0.008f, 0.7f);
             pc.Kick(0.35f);
         }
     }

@@ -162,6 +162,36 @@ namespace OrcHordeFps
             go.AddComponent<FxFade>().Init(life, c, Vector3.one, Vector3.zero);
         }
 
+        /// <summary>A small cylinder flung out and falling: a spent cartridge case.</summary>
+        public static void Casing(Vector3 pos, Vector3 velocity, Color c, float size, float life)
+        {
+            var go = Shapes.Prim(PrimitiveType.Cylinder, null, pos, new Vector3(size, size * 2f, size), Mats.Lit(c));
+            go.transform.rotation = Random.rotation;
+            go.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            go.AddComponent<FxFade>().Init(life, c, go.transform.localScale, velocity, gravity: 9.8f, fade: false, spin: 900f);
+        }
+
+        /// <summary>A jagged bolt of lightning between two points, with a thinner fork beside it.</summary>
+        public static void Lightning(Vector3 a, Vector3 b, Color c)
+        {
+            for (int pass = 0; pass < 2; pass++)
+            {
+                const int steps = 9;
+                var pts = new Vector3[steps + 1];
+                var d = b - a;
+                var side = Vector3.Cross(d, Vector3.up).normalized;
+                var up = Vector3.Cross(side, d).normalized;
+                float jag = d.magnitude * (pass == 0 ? 0.07f : 0.12f);
+                for (int i = 0; i <= steps; i++)
+                {
+                    float t = (float)i / steps;
+                    float edge = Mathf.Sin(t * Mathf.PI);
+                    pts[i] = a + d * t + (side * Random.Range(-1f, 1f) + up * Random.Range(-1f, 1f)) * jag * edge;
+                }
+                Polyline(pts, pass == 0 ? Color.Lerp(c, Color.white, 0.5f) : c, pass == 0 ? 0.06f : 0.025f, 0.14f);
+            }
+        }
+
         /// <summary>A flat ring that expands from its centre out to <paramref name="radius"/>.</summary>
         public static void Ring(Vector3 center, float radius, Color c, float life)
         {
@@ -207,8 +237,14 @@ namespace OrcHordeFps
         LineRenderer line;
         MaterialPropertyBlock block;
 
-        public void Init(float life, Color c, Vector3 endScale, Vector3 velocity)
+        float gravity, spin;
+        bool fade = true;
+
+        public void Init(float life, Color c, Vector3 endScale, Vector3 velocity, float gravity = 0f, bool fade = true, float spin = 0f)
         {
+            this.gravity = gravity;
+            this.fade = fade;
+            this.spin = spin;
             this.life = life;
             color = c;
             startScale = transform.localScale;
@@ -225,8 +261,11 @@ namespace OrcHordeFps
             t += Time.deltaTime;
             float k = t / life;
             if (k >= 1f) { Destroy(gameObject); return; }
+            velocity += Vector3.down * gravity * Time.deltaTime;
             transform.position += velocity * Time.deltaTime;
-            Apply(k);
+            if (gravity > 0 && transform.position.y < 0.02f) { velocity = Vector3.zero; gravity = 0; spin = 0; }
+            if (spin != 0) transform.Rotate(spin * Time.deltaTime, 0, spin * 0.6f * Time.deltaTime);
+            if (fade) Apply(k);
         }
 
         void Apply(float k)

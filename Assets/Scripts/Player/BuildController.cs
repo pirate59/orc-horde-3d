@@ -70,7 +70,7 @@ namespace OrcHordeFps
             if (Tool == BuildTool.None) return;
 
             ghost = new GameObject("Ghost");
-            if (Tool == BuildTool.Tower) Tower.BuildVisual(tower, ghost.transform, out _, out _);
+            if (Tool == BuildTool.Tower) Tower.BuildVisual(tower, ghost.transform);
             else Barricade.BuildVisual(Walls.Barricade, ghost.transform);
         }
 

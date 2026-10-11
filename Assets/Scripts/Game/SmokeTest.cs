@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest, gallery, stress;
+        static bool buildTest, gallery, stress, armory;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -58,6 +58,11 @@ namespace OrcHordeFps
                 for (int i = 0; i < args.Length - 1; i++)
                 {
                     if (args[i] == "-smoketest") outDir = args[i + 1];
+                    if (args[i] == "-smokearmory")
+                    {
+                        armory = true;
+                        queue = new Queue<string>(new[] { args[i + 1] });
+                    }
                     if (args[i] == "-smokestress")
                     {
                         stress = true;
@@ -105,6 +110,14 @@ namespace OrcHordeFps
         IEnumerator Start()
         {
             yield return null;
+            if (armory)
+            {
+                Invoke(nameof(GiveUp), 120f);
+                yield return Armory();
+                Log("done");
+                Application.Quit();
+                yield break;
+            }
             if (stress)
             {
                 Invoke(nameof(GiveUp), 90f);
@@ -502,6 +515,95 @@ namespace OrcHordeFps
                 yield return null;
             }
             Log($"gallery: done, vertices fodder={OrcDesigns.Get(Enemies.Fodder).mesh.vertexCount} boss={OrcDesigns.Get(Enemies.SiegeBoss).mesh.vertexCount}");
+        }
+
+        /// <summary>
+        /// The towers and the rifle at work: all five towers on tower ground,
+        /// immortal orcs walking in place in front of them so every tower fires,
+        /// photographed wide and one by one, then the rifle idle, firing and
+        /// halfway through a reload.
+        /// </summary>
+        IEnumerator Armory()
+        {
+            var gm = GameManager.I;
+            var pc = PlayerController.I;
+            var grid = gm.Grid;
+            BuildController.ClearLayout();
+            Hud.Hidden = true;
+            Tower.AlwaysArmed = true;
+            var start = pc.transform.position;
+            var fwd = pc.transform.forward;
+            var right = pc.transform.right;
+            var focus = start + fwd * 12f;
+
+            // Tower ground cells near the focus, spread apart, nearest first.
+            var cells = new List<Vector2Int>();
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+                if (grid.Kind(c, r) == HexGrid.TowerGround) cells.Add(new Vector2Int(c, r));
+            cells.Sort((a, b) => (grid.Center(a) - focus).sqrMagnitude.CompareTo((grid.Center(b) - focus).sqrMagnitude));
+            var towers = new List<Tower>();
+            foreach (var def in Towers.All)
+            {
+                foreach (var cell in cells)
+                {
+                    var at = BuildController.TowerPosition(cell);
+                    bool clear = true;
+                    foreach (var t in towers) if ((t.transform.position - at).magnitude < 4.5f) clear = false;
+                    if (!clear) continue;
+                    towers.Add(Tower.Create(def, at));
+                    break;
+                }
+            }
+
+            // Targets: orcs walking in place on the path among the towers.
+            var targets = new List<Enemy>();
+            var kinds = new[] { Enemies.Fodder, Enemies.Armoured, Enemies.Runner, Enemies.SiegeElite, Enemies.Fodder, Enemies.Shaman };
+            for (int i = 0; i < 10; i++)
+            {
+                var near = focus + right * Random.Range(-6f, 6f) + fwd * Random.Range(-3f, 5f);
+                var e = Enemy.Spawn(kinds[i % kinds.Length], near, 0.5f);
+                if (e == null) continue;
+                e.Puppet(-fwd + right * Random.Range(-0.3f, 0.3f), walk: true);
+                targets.Add(e);
+            }
+            Log($"armory: towers={towers.Count} targets={targets.Count}");
+
+            pc.Teleport(start - fwd * 2f);
+            pc.SetView(Quaternion.LookRotation(fwd).eulerAngles.y, 8f);
+            yield return new WaitForSeconds(1.6f);
+            yield return Snap("armory-wide");
+
+            foreach (var t in towers)
+            {
+                // Stand off to one side of the tower, a little above it, looking at it.
+                var toward = (focus - t.transform.position);
+                toward.y = 0;
+                var side = Vector3.Cross(Vector3.up, toward.normalized);
+                var eye = t.transform.position - toward.normalized * 2.4f + side * 2.6f;
+                eye.y = 0;
+                pc.Teleport(eye);
+                var look = t.transform.position + Vector3.up * 1.1f - (eye + Vector3.up * 1.65f);
+                pc.SetView(Quaternion.LookRotation(new Vector3(look.x, 0, look.z)).eulerAngles.y,
+                    -Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg);
+                yield return new WaitForSeconds(Mathf.Max(0.6f, t.Stats.FireInterval * 0.85f));
+                yield return Snap($"armory-{t.Def.Id}");
+            }
+
+            // The rifle: idle, mid-burst, and with the magazine out.
+            Tower.AlwaysArmed = false;
+            pc.Teleport(start);
+            pc.SetView(Quaternion.LookRotation(fwd).eulerAngles.y, 4f);
+            yield return new WaitForSeconds(0.5f);
+            yield return Snap("armory-rifle-idle");
+            for (int i = 0; i < 4; i++) { PlayerWeapon.I.DebugFire(); yield return new WaitForSeconds(0.1f); }
+            PlayerWeapon.I.DebugFire();
+            yield return Snap("armory-rifle-fire");
+            yield return new WaitForSeconds(0.4f);
+            PlayerWeapon.I.StartReload();
+            yield return new WaitForSeconds(0.6f);
+            yield return Snap("armory-rifle-reload");
+            Hud.Hidden = false;
         }
 
         /// <summary>

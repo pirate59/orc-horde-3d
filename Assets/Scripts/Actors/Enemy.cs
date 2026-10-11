@@ -166,6 +166,11 @@ namespace OrcHordeFps
             LeaveCorpse();
         }
 
+        float burnUntil, nextEmber;
+
+        /// <summary>Set alight by a Flame Thrower: it flickers orange and sheds embers while it burns.</summary>
+        public void Burn(float duration) => burnUntil = Mathf.Max(burnUntil, Time.time + duration);
+
         public void Slow(float factor, float duration)
         {
             slowFactor = Mathf.Min(factor, Time.time < slowUntil ? slowFactor : 1f);
@@ -177,6 +182,7 @@ namespace OrcHordeFps
         public float TakeDamage(float raw, bool headshot = false, Vector3? from = null)
         {
             if (!Alive || !Targetable) return 0f;
+            if (puppet) { flashUntil = Time.time + 0.06f; orc?.Flinch(0.3f); return 0f; }
             if (headshot) raw *= HeadshotMultiplier;
             if (Def.ShieldArcDegrees > 0 && from.HasValue)
             {
@@ -508,12 +514,29 @@ namespace OrcHordeFps
             }
         }
 
+        /// <summary>
+        /// Shows what is happening to the orc: white on a hit, an orange flicker
+        /// while it burns, a cold blue shimmer while an Arc Tower has it slowed.
+        /// </summary>
         void UpdateFlash()
         {
-            bool flash = Time.time < flashUntil;
-            if (flash == flashing) return;
-            flashing = flash;
-            block.SetColor("_Flash", flash ? new Color(0.55f, 0.5f, 0.45f) : Color.black);
+            Color glow = Color.black;
+            bool burning = Time.time < burnUntil, slowed = Time.time < slowUntil;
+            if (Time.time < flashUntil) glow = new Color(0.28f, 0.25f, 0.22f);
+            else if (burning) glow = new Color(0.4f, 0.13f, 0.02f) * (0.5f + 0.5f * Mathf.Sin(Time.time * 31f + transform.position.x));
+            else if (slowed) glow = new Color(0.07f, 0.14f, 0.36f) * (0.6f + 0.4f * Mathf.Sin(Time.time * 13f + transform.position.z));
+
+            if (burning && Time.time >= nextEmber)
+            {
+                nextEmber = Time.time + 0.12f;
+                Fx.Puff(AimPoint + Random.insideUnitSphere * Def.Radius, Vector3.up * Random.Range(1f, 2f), Random.Range(0.12f, 0.25f),
+                    Color.Lerp(U.Hex(0xffd23a), U.Hex(0xff4a1a), Random.value), 0.35f);
+            }
+
+            bool any = glow != Color.black;
+            if (!any && !flashing) return;
+            flashing = any;
+            block.SetColor("_Flash", glow);
             block.SetColor("_Tint", tint);
             foreach (var r in bodyRenderers) r.SetPropertyBlock(block);
         }

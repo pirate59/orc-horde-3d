@@ -4,7 +4,7 @@ using UnityEngine;
 namespace OrcHordeFps
 {
     /// <summary>
-    /// Builds one skinned mesh from simple solids. Each solid is bound wholly to
+    /// Builds a mesh from simple solids: skinned for orcs, plain for towers and guns. Each solid is bound wholly to
     /// the current bone, so a part moves rigidly with its joint; joints are
     /// hidden by overlapping round shapes, as on an action figure.
     ///
@@ -188,6 +188,67 @@ namespace OrcHordeFps
             Capsule(center - d * width / 2, center + d * width / 2, radius, radius, segments, 1);
         }
 
+        /// <summary>A capped cylinder from <paramref name="a"/> to <paramref name="b"/>, with hard edges: barrels, drums, tanks, plinths.</summary>
+        public void Cylinder(Vector3 a, Vector3 b, float radius, int segments = 16, bool capA = true, bool capB = true)
+        {
+            var d = (b - a).normalized;
+            var side = Vector3.Cross(d, Mathf.Abs(d.y) < 0.95f ? Vector3.up : Vector3.right).normalized;
+            var up = Vector3.Cross(side, d);
+            int start = verts.Count;
+            float len = (b - a).magnitude;
+            for (int s = 0; s <= segments; s++)
+            {
+                float lon = (float)s / segments * Mathf.PI * 2;
+                var radial = side * Mathf.Cos(lon) + up * Mathf.Sin(lon);
+                Vert(a + radial * radius, radial, new Vector2((float)s / segments * 2, 0));
+                Vert(b + radial * radius, radial, new Vector2((float)s / segments * 2, len * 2));
+            }
+            for (int s = 0; s < segments; s++)
+            {
+                int i = start + s * 2;
+                Quad(i, i + 2, i + 3, i + 1);
+            }
+            foreach (var (c, n, on) in new[] { (a, -d, capA), (b, d, capB) })
+            {
+                if (!on) continue;
+                int center = Vert(c, n, new Vector2(0.5f, 0.5f));
+                int first = verts.Count;
+                for (int s = 0; s <= segments; s++)
+                {
+                    float lon = (float)s / segments * Mathf.PI * 2;
+                    var radial = side * Mathf.Cos(lon) + up * Mathf.Sin(lon);
+                    Vert(c + radial * radius, n, new Vector2(0.5f + Mathf.Cos(lon) * 0.5f, 0.5f + Mathf.Sin(lon) * 0.5f));
+                }
+                for (int s = 0; s < segments; s++) { tris.Add(center); tris.Add(first + s); tris.Add(first + s + 1); }
+            }
+        }
+
+        /// <summary>A ring around <paramref name="axis"/>: coil turns, lens rims, toroids, belts of rivets.</summary>
+        public void Torus(Vector3 center, Vector3 axis, float radius, float tube, int segments = 24, int sides = 8)
+        {
+            var d = axis.normalized;
+            var side = Vector3.Cross(d, Mathf.Abs(d.y) < 0.95f ? Vector3.up : Vector3.right).normalized;
+            var up = Vector3.Cross(side, d);
+            int start = verts.Count;
+            for (int s = 0; s <= segments; s++)
+            {
+                float a = (float)s / segments * Mathf.PI * 2;
+                var ring = side * Mathf.Cos(a) + up * Mathf.Sin(a);
+                for (int k = 0; k <= sides; k++)
+                {
+                    float b = (float)k / sides * Mathf.PI * 2;
+                    var n = ring * Mathf.Cos(b) + d * Mathf.Sin(b);
+                    Vert(center + ring * radius + n * tube, n, new Vector2((float)s / segments * 4, (float)k / sides));
+                }
+            }
+            for (int s = 0; s < segments; s++)
+            for (int k = 0; k < sides; k++)
+            {
+                int i = start + s * (sides + 1) + k;
+                Quad(i, i + sides + 1, i + sides + 2, i + 1);
+            }
+        }
+
         /// <summary>A curved horn: a chain of tapering capsules along a bent path.</summary>
         public void Horn(Vector3 root, Vector3 outward, Vector3 curl, float length, float radius, int pieces = 5)
         {
@@ -202,6 +263,21 @@ namespace OrcHordeFps
                 else Capsule(p, next, radius * (1 - t0) + 0.002f, radius * (1 - t1) + 0.002f, 8, 1);
                 p = next;
             }
+        }
+
+        /// <summary>A plain, unskinned mesh, for props built from the same solids.</summary>
+        public Mesh Build(string name)
+        {
+            var mesh = new Mesh { name = name, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            mesh.SetVertices(verts);
+            mesh.SetNormals(normals);
+            mesh.SetColors(colors);
+            mesh.SetUVs(0, uvs);
+            mesh.SetUVs(1, extras);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateTangents();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         public Mesh Build(string name, Matrix4x4[] bindposes)
