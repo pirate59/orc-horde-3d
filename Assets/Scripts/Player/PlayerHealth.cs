@@ -37,7 +37,7 @@ namespace OrcHordeFps
 
         public void Revive()
         {
-            if (!Alive) PlayerController.I.Teleport(GameManager.I.Map.PlayerStart);
+            if (!Alive) PlayerController.I.Teleport(MapBuilder.PlayerStart(GameManager.I.Map, GameManager.I.Grid).position);
             Health = MaxHealth;
         }
 

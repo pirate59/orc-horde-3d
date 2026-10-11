@@ -69,16 +69,16 @@ namespace OrcHordeFps
                 _ => "<color=#5effc4>MAP HELD</color>",
             };
             GUI.Label(new Rect(r.x + S(14), r.y + S(6), S(400), S(30)),
-                $"<b>{gm.Map.Name}</b> · Round {gm.RoundIndex + 1}/{gm.Map.Rounds.Length}: {gm.Round.Name}", label);
+                $"<b>{gm.Map.name}</b> · Round {gm.RoundIndex + 1}/{gm.Map.rounds.Length}: {gm.Round.name}", label);
             GUI.Label(new Rect(r.x + S(14), r.y + S(36), S(300), S(30)), phase, label);
             GUI.Label(new Rect(r.xMax - S(200), r.y + S(6), S(190), S(30)),
                 $"Orcs: {Enemy.All.Count}   Kills: {gm.Kills}", label);
 
             GUI.Label(new Rect(r.xMax - S(200), r.y + S(36), S(60), S(30)), "Base", label);
-            Bar(new Rect(r.xMax - S(145), r.y + S(40), S(130), S(20)), gm.BaseHealth / (float)gm.Round.StartingHealth,
-                gm.BaseHealth > gm.Round.StartingHealth / 3 ? Mint : Red);
+            Bar(new Rect(r.xMax - S(145), r.y + S(40), S(130), S(20)), gm.BaseHealth / (float)gm.Round.startingHealth,
+                gm.BaseHealth > gm.Round.startingHealth / 3 ? Mint : Red);
             GUI.Label(new Rect(r.xMax - S(145), r.y + S(37), S(130), S(26)),
-                $"<color=#0d1014><b>{gm.BaseHealth}/{gm.Round.StartingHealth}</b></color>", center);
+                $"<color=#0d1014><b>{gm.BaseHealth}/{gm.Round.startingHealth}</b></color>", center);
 
             if (gm.Phase == Phase.Combat)
                 Bar(new Rect(r.x, r.yMax, r.width, S(5)), gm.SpawnProgress, Amber);
@@ -219,8 +219,8 @@ namespace OrcHordeFps
             var r = new Rect(S(20), S(100), S(340), S(400));
             Box(r, Panel);
             GUI.Label(new Rect(r.x + S(14), r.y + S(10), r.width - S(28), r.height - S(20)),
-                "<b>ORC HORDE: FPS</b>\n" +
-                "Hold the road. Orcs pour in from the west gate and march to the yard behind you.\n\n" +
+                $"<b>{GameManager.I.Map.name.ToUpper()}</b>\n" +
+                $"{GameManager.I.Map.description}\n\n" +
                 "<b>Move</b>  WASD · Shift sprint · Space jump\n" +
                 "<b>Shoot</b>  Left mouse · R reload · headshots ×2\n" +
                 "<b>Abilities</b>  hold Q / E to aim, release\n\n" +
@@ -228,20 +228,30 @@ namespace OrcHordeFps
                 "1–5 towers · 6 barricade · R rotate\n" +
                 "Left click place · X / right click remove\n" +
                 "0 put away · <b>G start round</b>\n\n" +
-                "Towers stand on the raised shoulders. Barricades go on the road and reroute the horde.\n\n" +
-                "H hide help · Esc pause", small);
+                "Towers stand on the raised ground beside the path, one per hex. Barricades go on the path and reroute the horde.\n\n" +
+                "H hide help · Esc pause / choose map", small);
         }
 
         void DrawPause(GameManager gm)
         {
             Box(new Rect(0, 0, Screen.width, Screen.height), new Color(0, 0, 0, 0.55f));
-            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(110), S(320), S(220));
+            var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
+            if (gm.MapMenuOpen) { DrawMapMenu(gm, btn); return; }
+
+            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(135), S(320), S(270));
             Box(r, Panel);
             GUI.Label(new Rect(r.x, r.y + S(10), r.width, S(40)), "Paused", banner);
-            var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
-            if (GUI.Button(new Rect(r.x + S(40), r.y + S(60), r.width - S(80), S(40)), "Resume", btn)) gm.SetPaused(false);
-            if (GUI.Button(new Rect(r.x + S(40), r.y + S(110), r.width - S(80), S(40)), "Restart campaign", btn)) gm.RestartCampaign();
-            if (GUI.Button(new Rect(r.x + S(40), r.y + S(160), r.width - S(80), S(40)), "Quit", btn))
+            float y = r.y + S(60);
+            bool Button(string text)
+            {
+                bool pressed = GUI.Button(new Rect(r.x + S(40), y, r.width - S(80), S(40)), text, btn);
+                y += S(50);
+                return pressed;
+            }
+            if (Button("Resume")) gm.SetPaused(false);
+            if (Button("Choose map")) gm.MapMenuOpen = true;
+            if (Button("Restart map")) gm.RestartMap();
+            if (Button("Quit"))
             {
 #if UNITY_EDITOR
                 UnityEditor.EditorApplication.isPlaying = false;
@@ -249,6 +259,41 @@ namespace OrcHordeFps
                 Application.Quit();
 #endif
             }
+        }
+
+        Vector2 mapScroll;
+
+        /// <summary>The campaign in order, locked past the furthest map held, then the test grounds.</summary>
+        void DrawMapMenu(GameManager gm, GUIStyle btn)
+        {
+            var catalog = Session.Catalog;
+            var r = new Rect(Screen.width / 2f - S(330), S(60), S(660), Screen.height - S(120));
+            Box(r, Panel);
+            GUI.Label(new Rect(r.x, r.y + S(8), r.width, S(40)), "Choose map", banner);
+
+            var others = System.Array.FindAll(catalog.maps, m => catalog.CampaignIndex(m.id) < 0);
+            int count = catalog.campaign.Length + others.Length;
+            float rowH = S(62);
+            var view = new Rect(r.x + S(16), r.y + S(56), r.width - S(32), r.height - S(120));
+            mapScroll = GUI.BeginScrollView(view, mapScroll, new Rect(0, 0, view.width - S(20), rowH * count));
+            for (int i = 0; i < count; i++)
+            {
+                var map = i < catalog.campaign.Length ? catalog.Get(catalog.campaign[i]) : others[i - catalog.campaign.Length];
+                bool open = Session.IsAvailable(map.id);
+                string label = i < catalog.campaign.Length ? $"{i + 1}. {map.name}" : $"Test · {map.name}";
+                string detail = !open ? "<color=#888>Locked: hold the map before it</color>"
+                    : $"<color=#bbb>{map.description}</color>";
+                var row = new Rect(0, i * rowH, view.width - S(20), rowH - S(6));
+                GUI.enabled = open;
+                if (GUI.Button(new Rect(row.x, row.y, S(200), row.height), label, btn)) Session.Play(map.id);
+                GUI.enabled = true;
+                GUI.Label(new Rect(row.x + S(210), row.y, row.width - S(210), row.height), detail, small);
+            }
+            GUI.EndScrollView();
+
+            if (GUI.Button(new Rect(r.x + S(16), r.yMax - S(54), S(200), S(40)), "Back", btn)) gm.MapMenuOpen = false;
+            if (GUI.Button(new Rect(r.xMax - S(256), r.yMax - S(54), S(240), S(40)), "Unlock all (dev)", btn))
+                Session.Unlocked = catalog.campaign.Length;
         }
     }
 }

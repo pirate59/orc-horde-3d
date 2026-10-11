@@ -1,24 +1,41 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
 namespace OrcHordeFps
 {
     /// <summary>
-    /// Headless-ish check of a real build: run the player with <c>-smoketest &lt;dir&gt;</c>
-    /// and it places a layout, plays the first rounds at speed, writes
-    /// screenshots and a summary, then quits. Errors land in Player.log.
+    /// Unattended check of a real build. Run the player with
+    /// <c>-smoketest &lt;dir&gt; [-smokemaps all|id,id]</c> and on each map it places a
+    /// layout, photographs the map from above and the fight from the player,
+    /// plays the first round at speed, writes a line to summary.txt, then moves
+    /// to the next map. Errors land in the player log.
     /// </summary>
     public sealed class SmokeTest : MonoBehaviour
     {
-        string outDir;
+        const float Speed = 4f, RealSecondsPerMap = 50f;
+
+        static Queue<string> queue;
+        static string outDir;
 
         public static void AttachIfRequested()
         {
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
-                if (args[i] == "-smoketest")
-                    new GameObject("SmokeTest").AddComponent<SmokeTest>().outDir = args[i + 1];
+            {
+                if (args[i] == "-smoketest") outDir ??= args[i + 1];
+                if (args[i] == "-smokemaps" && queue == null)
+                {
+                    var catalog = Session.Catalog;
+                    queue = new Queue<string>(args[i + 1] == "all"
+                        ? System.Array.ConvertAll(catalog.maps, m => m.id)
+                        : args[i + 1].Split(','));
+                    // The map already built is the first one tested.
+                    if (queue.Count > 0 && queue.Peek() != Session.CurrentId) { Session.Play(queue.Peek()); return; }
+                }
+            }
+            if (outDir != null) new GameObject("SmokeTest").AddComponent<SmokeTest>();
         }
 
         IEnumerator Start()
@@ -28,56 +45,98 @@ namespace OrcHordeFps
             var map = gm.Map;
             yield return null;
 
-            // A line like a first-time player's: guns on both shoulders of the first straight, one barricade.
-            var road = map.Road[0];
-            float north = road.yMax + map.ShoulderDepth / 2, south = road.yMin - map.ShoulderDepth / 2;
-            Tower.Create(Towers.MachineGun, new Vector3(14, MapBuilder.ShoulderHeight, north));
-            Tower.Create(Towers.MachineGun, new Vector3(24, MapBuilder.ShoulderHeight, south));
-            Tower.Create(Towers.Cannon, new Vector3(20, MapBuilder.ShoulderHeight, north));
-            Tower.Create(Towers.ArcTower, new Vector3(28.5f, MapBuilder.ShoulderHeight, 34f));
-            Tower.Create(Towers.FlameThrower, new Vector3(28.5f, MapBuilder.ShoulderHeight, 45f));
-            Tower.Create(Towers.Laser, new Vector3(50, MapBuilder.ShoulderHeight, 32f));
-            Barricade.Create(Walls.Barricade, new Vector3(20, 0, road.center.y - 2.5f), Quaternion.Euler(0, 90, 0));
-
+            int placed = PlaceLayout(gm);
             var player = PlayerController.I;
-            player.Teleport(new Vector3(40f, 0, 26f));
-            player.transform.rotation = Quaternion.Euler(0, -90, 0);
-            Shot("01-build");
+            yield return Overhead(map);
 
-            for (int round = 0; round < 2; round++)
+            gm.StartRound();
+            Time.timeScale = Speed;
+            float t = 0;
+            bool shot = false;
+            while (gm.Phase == Phase.Combat && t < RealSecondsPerMap)
             {
-                gm.StartRound();
-                Time.timeScale = 3f;
-                float t = 0;
-                bool midShot = false;
-                while (gm.Phase == Phase.Combat && t < 120f)
+                t += Time.unscaledDeltaTime;
+                if (!shot && Enemy.All.Count > 0)
                 {
-                    t += Time.unscaledDeltaTime;
-                    if (!midShot && Enemy.All.Count > 12)
+                    // Stand a little up the path from the base and face the nearest orc.
+                    var nearest = Enemy.All[0];
+                    foreach (var e in Enemy.All)
+                        if ((e.transform.position - map.Base).sqrMagnitude < (nearest.transform.position - map.Base).sqrMagnitude) nearest = e;
+                    if ((nearest.transform.position - map.Base).magnitude < 35f)
                     {
-                        midShot = true;
+                        shot = true;
                         Time.timeScale = 1f;
+                        var look = nearest.transform.position - player.transform.position;
+                        look.y = 0;
+                        player.transform.rotation = Quaternion.LookRotation(look);
                         yield return null;
-                        Shot($"0{round + 2}-round{round + 1}-fight");
-                        Time.timeScale = 3f;
+                        Shot($"{map.id}-fight");
+                        yield return null;
+                        Time.timeScale = Speed;
                     }
-                    yield return null;
                 }
-                Time.timeScale = 1f;
-                Log($"round {round + 1}: phase={gm.Phase} base={gm.BaseHealth}/{gm.Round.StartingHealth} kills={gm.Kills} " +
-                    $"alive={Enemy.All.Count} barricadeHp={Barricade.All[0].Health:0} realSeconds={t:0.0}");
-                if (gm.Phase != Phase.Won) break;
-                gm.Continue();
                 yield return null;
             }
+            Time.timeScale = 1f;
+            Log($"{map.id,-18} towers={placed} phase={gm.Phase} base={gm.BaseHealth}/{gm.Round.startingHealth} " +
+                $"kills={gm.Kills} alive={Enemy.All.Count} spawned={gm.SpawnProgress:P0} links={Links.All.Count}/{map.links.Length} " +
+                $"crossings={Enemy.LinkCrossings} real={t:0}s");
 
+            queue?.Dequeue();
+            if (queue != null && queue.Count > 0) { Session.Play(queue.Peek()); yield break; }
             Log("done");
             Application.Quit();
         }
 
-        void Shot(string name) => ScreenCapture.CaptureScreenshot(Path.Combine(outDir, name + ".png"));
+        /// <summary>
+        /// A layout a first-time player might build: every tower allowance spent on
+        /// the tower ground next to the path, nearest the base first, spread out.
+        /// </summary>
+        static int PlaceLayout(GameManager gm)
+        {
+            var grid = gm.Grid;
+            var cells = new List<Vector2Int>();
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+            {
+                if (grid.Kind(c, r) != HexGrid.TowerGround) continue;
+                for (int s = 0; s < 6; s++)
+                    if (HexGrid.IsPath(grid.Kind(HexGrid.Across(c, r, s)))) { cells.Add(new Vector2Int(c, r)); break; }
+            }
+            cells.Sort((a, b) => (grid.Center(a) - gm.Map.Base).sqrMagnitude.CompareTo((grid.Center(b) - gm.Map.Base).sqrMagnitude));
 
-        void Log(string line)
+            int placed = 0, next = 2;
+            foreach (var def in Towers.All)
+                for (int i = 0; i < def.Limit && next < cells.Count; i++, next += 4, placed++)
+                    Tower.Create(def, grid.Center(cells[next]) + Vector3.up * MapBuilder.TowerGroundHeight);
+            return placed;
+        }
+
+        /// <summary>The whole map from straight above, with the player's camera stood down for the frame.</summary>
+        IEnumerator Overhead(MapData map)
+        {
+            var player = PlayerController.I.Cam;
+            var cam = new GameObject("Overhead").AddComponent<Camera>();
+            cam.orthographic = true;
+            cam.orthographicSize = Mathf.Max(map.Depth, map.Width / cam.aspect) / 2 + 2;
+            cam.transform.SetPositionAndRotation(new Vector3(map.Width / 2, 80, map.Depth / 2), Quaternion.Euler(90, 0, 0));
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            cam.farClipPlane = 200;
+            player.enabled = false;
+            bool fog = RenderSettings.fog;
+            RenderSettings.fog = false;
+            yield return null;
+            Shot($"{map.id}-overhead");
+            yield return null;
+            RenderSettings.fog = fog;
+            player.enabled = true;
+            Destroy(cam.gameObject);
+        }
+
+        static void Shot(string name) => ScreenCapture.CaptureScreenshot(Path.Combine(outDir, name + ".png"));
+
+        static void Log(string line)
         {
             Debug.Log("[SmokeTest] " + line);
             File.AppendAllText(Path.Combine(outDir, "summary.txt"), line + "\n");

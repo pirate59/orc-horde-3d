@@ -32,7 +32,7 @@ namespace OrcHordeFps
                     QueryTriggerInteraction.Ignore))
             {
                 var e = hit.collider.GetComponentInParent<Enemy>();
-                if (e != null) e.TakeDamage(damage);
+                if (e != null) e.TakeDamage(damage, from: transform.position);
                 Fx.Burst(hit.point, 0.2f, U.Hex(0xffe08a), 0.08f);
                 Destroy(gameObject);
                 return;

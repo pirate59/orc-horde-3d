@@ -142,7 +142,7 @@ namespace OrcHordeFps
         bool CanSee(Enemy e) => Def.SightPreferred ||
             !Physics.Linecast(muzzle.position, e.AimPoint, SightMask, QueryTriggerInteraction.Ignore);
 
-        bool Valid(Enemy e) => e != null && e.Alive && FlatDistance(e.transform.position) <= Def.Range + e.Def.Radius;
+        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && FlatDistance(e.transform.position) <= Def.Range + e.Def.Radius;
 
         bool AnyInRange()
         {
@@ -198,7 +198,7 @@ namespace OrcHordeFps
                 foreach (var h in Physics.SphereCastAll(p, 0.15f, dir, len, Layers.EnemyMask, QueryTriggerInteraction.Ignore))
                 {
                     var e = h.collider.GetComponentInParent<Enemy>();
-                    if (e != null && struck.Add(e)) e.TakeDamage(Def.Damage);
+                    if (e != null && struck.Add(e)) e.TakeDamage(Def.Damage, from: p);
                 }
                 p += dir * len;
                 points.Add(p);
@@ -218,7 +218,7 @@ namespace OrcHordeFps
             {
                 if (!Valid(e)) continue;
                 e.Slow(Def.SlowFactor, Def.SlowDuration);
-                e.TakeDamage(Def.Damage);
+                e.TakeDamage(Def.Damage, from: transform.position);
             }
             Fx.Ring(transform.position + Vector3.up * 0.6f, Def.Range, Def.Color, 0.45f);
         }
@@ -232,7 +232,7 @@ namespace OrcHordeFps
                 var to = e.transform.position - transform.position;
                 to.y = 0;
                 if (Vector3.Angle(head.forward, to) > half || !CanSee(e)) continue;
-                e.TakeDamage(Def.Damage);
+                e.TakeDamage(Def.Damage, from: transform.position);
             }
             for (int i = 0; i < 3; i++)
             {

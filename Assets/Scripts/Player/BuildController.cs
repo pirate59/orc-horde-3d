@@ -108,29 +108,22 @@ namespace OrcHordeFps
             }
         }
 
+        /// <summary>As in Orc Horde, a tower stands at the centre of a tower-ground cell: one per cell.</summary>
         void PreviewTower(RaycastHit hit)
         {
             var def = SelectedTower;
-            var pos = hit.point;
+            var grid = GameManager.I.Grid;
+            var cell = grid.CellAt(hit.point);
+            var pos = grid.Center(cell) + Vector3.up * MapBuilder.TowerGroundHeight;
             ghost.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(PlayerController.I.transform.forward));
 
             rangeRing.enabled = true;
-            Fx.SetCircle(rangeRing, new Vector3(pos.x, MapBuilder.ShoulderHeight + 0.05f, pos.z), def.Range, 64);
+            Fx.SetCircle(rangeRing, pos + Vector3.up * 0.05f, def.Range, 64);
 
             if (Placed(def) >= def.Limit) { Invalid($"All {def.Limit} {def.Name}s are placed — X removes one"); return; }
-            if (hit.collider.gameObject.layer != Layers.BuildGround || hit.normal.y < 0.9f)
-            { Invalid("Towers stand on the raised shoulders beside the road"); return; }
-            // The whole footprint must be on the shoulder, not hanging over the road or into rock.
-            foreach (var offset in new[] { Vector3.forward, Vector3.back, Vector3.left, Vector3.right })
-            {
-                var probe = pos + offset * def.Footprint + Vector3.up * 0.5f;
-                if (!Physics.Raycast(probe, Vector3.down, out var under, 1f, Layers.GroundMask) ||
-                    under.collider.gameObject.layer != Layers.BuildGround)
-                { Invalid("Not enough room on the shoulder here"); return; }
-            }
-            if (Physics.CheckSphere(pos + Vector3.up * 1.2f, def.Footprint * 0.95f, Layers.TowerMask | Layers.WallMask | Layers.RockMask,
-                    QueryTriggerInteraction.Ignore))
-            { Invalid("Too close to something else"); return; }
+            if (grid.Kind(cell) != HexGrid.TowerGround) { Invalid("Towers stand on the raised ground beside the path"); return; }
+            foreach (var t in Tower.All)
+                if ((t.transform.position - pos).sqrMagnitude < 0.25f) { Invalid("A tower already stands here"); return; }
             Valid($"Left click: place {def.Name}  ({Placed(def)}/{def.Limit})");
         }
 
@@ -143,10 +136,15 @@ namespace OrcHordeFps
             ghost.transform.SetPositionAndRotation(pos, rot);
 
             if (Barricade.All.Count >= def.Limit) { Invalid($"All {def.Limit} barricades are placed — X removes one"); return; }
-            if (hit.collider.gameObject.layer != Layers.Road) { Invalid("Barricades go on the road"); return; }
+            if (hit.collider.gameObject.layer != Layers.Road || GameManager.I.Grid.Kind(GameManager.I.Grid.CellAt(pos)) != HexGrid.WallPath)
+            { Invalid("Barricades go on the path"); return; }
             var map = GameManager.I.Map;
-            if (Vector3.Distance(pos, map.Spawn) < KeepClearOfEnds || Vector3.Distance(pos, map.Base) < KeepClearOfEnds)
-            { Invalid("Too close to the gate or the yard"); return; }
+            if (Vector3.Distance(pos, map.Base) < KeepClearOfEnds) { Invalid("Too close to the base"); return; }
+            foreach (var s in map.spawns)
+                if (Vector3.Distance(pos, map.World(s.x, s.y)) < KeepClearOfEnds) { Invalid("Too close to a gate"); return; }
+            foreach (var link in Links.All)
+                if (Vector3.Distance(pos, link.Entry) < KeepClearOfEnds * 0.6f || Vector3.Distance(pos, link.Exit) < KeepClearOfEnds * 0.6f)
+                { Invalid("Keep the bridge and tunnel mouths clear"); return; }
             // Slightly inset, so a barricade may butt up against the rock or another wall.
             var half = new Vector3(def.Length / 2 - 0.1f, def.Height / 2, def.Thickness / 2 - 0.1f);
             if (Physics.CheckBox(pos + Vector3.up * (def.Height / 2 + 0.05f), half, rot,

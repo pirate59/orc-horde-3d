@@ -100,7 +100,7 @@ namespace OrcHordeFps
                 if (e != null)
                 {
                     bool head = hit.collider.GetComponent<EnemyHead>() != null;
-                    e.TakeDamage(Damage, head);
+                    e.TakeDamage(Damage, head, ray.origin);
                     HitMarkerUntil = Time.time + 0.12f;
                     LastHitWasHead = head;
                     Fx.Burst(hit.point, 0.25f, U.Hex(0x7a1010), 0.15f);

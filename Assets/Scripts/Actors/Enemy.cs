@@ -27,6 +27,10 @@ namespace OrcHordeFps
         public bool Alive => Health > 0f;
         public Vector3 AimPoint => transform.position + Vector3.up * Def.Height * 0.5f;
         public Vector3 Velocity => agent.velocity;
+        /// <summary>False while inside a tunnel: out of sight and out of reach.</summary>
+        public bool Targetable { get; private set; } = true;
+        /// <summary>Crossings made by every orc this session, for the smoke test.</summary>
+        public static int LinkCrossings;
 
         /// <summary>Path left to the base, for "first" targeting. Smaller is further along.</summary>
         public float Remaining =>
@@ -42,6 +46,16 @@ namespace OrcHordeFps
         float nextThink, nextHeal;
         Barricade wallTarget;
         MaterialPropertyBlock block;
+        Collider[] colliders;
+
+        // A bridge or tunnel crossing in progress.
+        Links.Info crossing;
+        Vector3 crossFrom, crossTo;
+        float crossDistance, crossTravelled;
+
+        // Boss state.
+        float lastHurt, nextCharge, chargeEnds, windupEnds, pausedUntil;
+        int summonsDone;
 
         public static Enemy Spawn(EnemyDef def, Vector3 near, float scatter = 3f)
         {
@@ -70,11 +84,14 @@ namespace OrcHordeFps
             agent.autoBraking = false;
             agent.stoppingDistance = 0f;
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+            // Crossed by hand, so an orc climbs onto a bridge or vanishes into a tunnel.
+            agent.autoTraverseOffMeshLink = false;
             // Big units shoulder through; small ones give way.
             agent.avoidancePriority = Mathf.Clamp(70 - Mathf.RoundToInt(def.Radius * 40), 10, 90);
             if (agent.isOnNavMesh) agent.SetDestination(GameManager.I.Map.Base);
 
             nextThink = Time.time + Random.value;
+            nextCharge = Time.time + def.ChargeInterval;
             All.Add(this);
         }
 
@@ -111,8 +128,23 @@ namespace OrcHordeFps
                 Shapes.Prim(PrimitiveType.Cylinder, transform, new Vector3(r * 1.2f, h * 0.55f, 0),
                     new Vector3(0.08f, h * 0.55f, 0.08f), Mats.Lit(U.Hex(0x4fbf7a), 1.5f));
 
+            if (Def.ShieldArcDegrees > 0)
+                Shapes.Prim(PrimitiveType.Cube, transform, new Vector3(0, h * 0.42f, r * 1.3f), new Vector3(r * 2.6f, h * 0.7f, 0.18f),
+                    Mats.Lit(U.Hex(0x8fd0ff), 0.6f));
+            if (Def.ChargeInterval > 0)
+                foreach (var x in new[] { -1f, 1f })
+                {
+                    var horn = Shapes.Prim(PrimitiveType.Cylinder, head.transform, new Vector3(x * 0.5f, 0.3f, 0.2f), new Vector3(0.15f, 0.4f, 0.15f), tusk);
+                    horn.transform.localRotation = Quaternion.Euler(0, 0, x * -50f);
+                }
+            if (Def.SummonThresholds != null)
+                Shapes.Prim(PrimitiveType.Cylinder, head.transform, new Vector3(0, 0.55f, 0), new Vector3(0.8f, 0.12f, 0.8f), Mats.Lit(U.Hex(0xffd166), 1.2f));
+            if (Def.RegenPerSecond > 0)
+                Shapes.Prim(PrimitiveType.Cylinder, transform, new Vector3(0, h + 0.8f, 0), new Vector3(0.3f, 0.8f, 0.3f), Mats.Lit(U.Hex(0xff6b8a), 2f));
+
             Layers.SetRecursive(gameObject, Layers.Enemy);
             bodyRenderers = GetComponentsInChildren<Renderer>();
+            colliders = GetComponentsInChildren<Collider>();
             block = new MaterialPropertyBlock();
         }
 
@@ -123,10 +155,19 @@ namespace OrcHordeFps
         }
 
         /// <summary>Returns the damage actually dealt, after armour.</summary>
-        public float TakeDamage(float raw, bool headshot = false)
+        /// <param name="from">Where the hit came from; null for blows from above, which no shield stops.</param>
+        public float TakeDamage(float raw, bool headshot = false, Vector3? from = null)
         {
-            if (!Alive) return 0f;
+            if (!Alive || !Targetable) return 0f;
             if (headshot) raw *= HeadshotMultiplier;
+            if (Def.ShieldArcDegrees > 0 && from.HasValue)
+            {
+                var toSource = from.Value - transform.position;
+                toSource.y = 0;
+                if (toSource.sqrMagnitude > 0.01f && Vector3.Angle(transform.forward, toSource) <= Def.ShieldArcDegrees / 2)
+                    raw *= 1f - Def.ShieldReduction;
+            }
+            lastHurt = Time.time;
             float dealt = Damage.AfterArmour(raw, Def.Armour);
             Health -= dealt;
             flashUntil = Time.time + 0.06f;
@@ -152,11 +193,14 @@ namespace OrcHordeFps
 
         void Update()
         {
-            if (!Alive || !agent.isOnNavMesh) return;
+            if (!Alive) return;
+            if (crossing != null || (agent.isOnNavMesh && agent.isOnOffMeshLink)) { Cross(); return; }
+            if (!agent.isOnNavMesh) return;
             var gm = GameManager.I;
 
             bool slowed = Time.time < slowUntil;
-            agent.speed = Def.Speed * (slowed ? slowFactor : 1f);
+            agent.speed = Def.Speed * (slowed ? slowFactor : 1f) * BossSpeed();
+            if (Def.IsBoss && Boss()) { UpdateFlash(); return; }
 
             var toBase = gm.Map.Base - transform.position;
             toBase.y = 0;
@@ -187,6 +231,102 @@ namespace OrcHordeFps
 
             HitPlayer();
             UpdateFlash();
+        }
+
+        /// <summary>
+        /// Crosses a bridge or tunnel under its own control: straight across the
+        /// span keeping its place across the width, up onto the deck or out of
+        /// sight in the rock, then back onto the navmesh on the far side.
+        /// </summary>
+        void Cross()
+        {
+            if (crossing == null)
+            {
+                crossing = Links.Nearest(transform.position);
+                if (crossing == null) { agent.CompleteOffMeshLink(); return; }
+                var across = Vector3.Cross(Vector3.up, crossing.Direction);
+                float offset = Vector3.Dot(transform.position - crossing.Entry, across);
+                crossFrom = transform.position;
+                crossTo = crossing.Exit + across * offset;
+                if (NavMesh.SamplePosition(crossTo, out var hit, 2f, NavMesh.AllAreas)) crossTo = hit.position;
+                crossDistance = Vector3.Distance(crossFrom, crossTo);
+                crossTravelled = 0;
+                if (crossing.Tunnel) SetTargetable(false);
+                LinkCrossings++;
+            }
+
+            float slow = Time.time < slowUntil ? slowFactor : 1f;
+            crossTravelled += Def.Speed * slow * BossSpeed() * Time.deltaTime;
+            float k = Mathf.Clamp01(crossTravelled / Mathf.Max(crossDistance, 0.01f));
+            // On a bridge, up the ramp over the first stretch, along the deck, down over the last.
+            float lift = crossing.Tunnel ? 0f : Links.DeckHeight * Mathf.Clamp01(Mathf.Min(k, 1f - k) / 0.18f);
+            var pos = Vector3.Lerp(crossFrom, crossTo, k) + Vector3.up * lift;
+            var heading = crossTo - crossFrom;
+            heading.y = 0;
+            transform.SetPositionAndRotation(pos, heading.sqrMagnitude > 0.01f ? Quaternion.LookRotation(heading) : transform.rotation);
+            if (k < 1f) return;
+
+            if (crossing.Tunnel) SetTargetable(true);
+            crossing = null;
+            if (agent.isOnOffMeshLink) agent.CompleteOffMeshLink();
+            agent.Warp(crossTo);
+            agent.SetDestination(GameManager.I.Map.Base);
+        }
+
+        void SetTargetable(bool value)
+        {
+            Targetable = value;
+            foreach (var r in bodyRenderers) r.enabled = value;
+            foreach (var c in colliders) c.enabled = value;
+        }
+
+        float BossSpeed()
+        {
+            float m = 1f;
+            if (Def.EnrageThreshold > 0 && Health <= Def.MaxHealth * Def.EnrageThreshold) m *= Def.EnrageSpeedMultiplier;
+            if (Time.time < chargeEnds && Time.time >= windupEnds) m *= Def.ChargeSpeedMultiplier;
+            return m;
+        }
+
+        /// <summary>Runs the boss's set behaviours. Returns true while one holds it still this frame.</summary>
+        bool Boss()
+        {
+            if (Def.RegenPerSecond > 0 && Time.time - lastHurt > Def.RegenIdle)
+                Heal(Def.RegenPerSecond * Time.deltaTime);
+
+            if (Def.SummonThresholds != null && summonsDone < Def.SummonThresholds.Length &&
+                Health <= Def.MaxHealth * Def.SummonThresholds[summonsDone])
+            {
+                summonsDone++;
+                pausedUntil = Time.time + Def.SummonPause;
+                foreach (var (def, count) in Def.SummonEscort)
+                    for (int i = 0; i < count; i++) Spawn(def, transform.position, 3f);
+                Fx.Ring(transform.position + Vector3.up * 0.3f, 6f, U.Hex(0xffd166), 0.8f);
+                GameManager.I.Announce($"The {Def.Name} calls its war band!", U.Hex(0xffd166), 3f);
+            }
+
+            if (Def.ChargeInterval > 0 && Time.time >= nextCharge)
+            {
+                nextCharge = Time.time + Def.ChargeInterval;
+                windupEnds = Time.time + Def.ChargeWindup;
+                chargeEnds = windupEnds + Def.ChargeDuration;
+            }
+            if (Time.time < chargeEnds && Time.time >= windupEnds)
+            {
+                // The first barricade in its path takes the full blow, and the charge ends there.
+                var wall = Barricade.Nearest(transform.position, Def.Radius + 1.2f);
+                if (wall != null)
+                {
+                    wall.Damage(Def.ChargeWallDamage);
+                    Fx.Burst(wall.ClosestPoint(transform.position) + Vector3.up, 3f, U.Hex(0xff9a5c), 0.4f);
+                    chargeEnds = Time.time;
+                }
+            }
+
+            // Gathering a war band, or winding up a charge.
+            bool hold = Time.time < pausedUntil || (Def.ChargeInterval > 0 && Time.time < windupEnds);
+            if (hold) agent.isStopped = true;
+            return hold;
         }
 
         bool RoadSealed => !agent.pathPending && agent.pathStatus != NavMeshPathStatus.PathComplete;

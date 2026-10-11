@@ -71,6 +71,20 @@ namespace OrcHordeFps
         public int SplitCount;
         public Color Color;
 
+        // Boss behaviours, from Orc Horde's bossBehaviours. Zero means the boss has none of that kind.
+        /// <summary>Charge: every interval, wind up standing still, then run at a multiple of its pace, smashing the first barricade.</summary>
+        public float ChargeInterval, ChargeWindup, ChargeDuration, ChargeSpeedMultiplier, ChargeWallDamage;
+        /// <summary>Enrage: below this fraction of health, moves faster.</summary>
+        public float EnrageThreshold, EnrageSpeedMultiplier;
+        /// <summary>Frontal shield: hits from within this arc ahead lose this fraction of their damage.</summary>
+        public float ShieldArcDegrees, ShieldReduction;
+        /// <summary>Summon: at each threshold, stop and call an escort to its side.</summary>
+        public float[] SummonThresholds;
+        public (EnemyDef def, int count)[] SummonEscort;
+        public float SummonPause;
+        /// <summary>Regenerate: left unhurt this long, heals itself every second.</summary>
+        public float RegenIdle, RegenPerSecond;
+
         /// <summary>Standing height: tall enough to read the size classes apart at a glance.</summary>
         public float Height => Mathf.Clamp(Radius * 5.5f, 1.6f, 5f);
     }
@@ -89,27 +103,4 @@ namespace OrcHordeFps
         public float Cooldown, Damage, Radius, Length, Width;
     }
 
-    public sealed class RoundDef
-    {
-        public string Name;
-        public int StartingHealth;
-        public float Duration, PressureBudget;
-        public (EnemyDef def, float weight)[] Enemies;
-        public (EnemyDef def, int count, float at, float spacing)[] Guaranteed = { };
-        public (EnemyDef def, float at, float warning)[] Bosses = { };
-    }
-
-    public sealed class MapDef
-    {
-        public string Name, Description, SpawnName, BaseName;
-        public float Width, Depth;
-        /// <summary>The enemy floor, in metres on the XZ plane.</summary>
-        public Rect[] Road;
-        /// <summary>How far back from the road a tower may stand.</summary>
-        public float ShoulderDepth;
-        public Vector3 Spawn, Base, PlayerStart;
-        public float PlayerYaw;
-        public Color RockColor, FloorColor, ShoulderColor;
-        public RoundDef[] Rounds;
-    }
 }

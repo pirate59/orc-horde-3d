@@ -145,6 +145,93 @@ namespace OrcHordeFps
             Pressure = 2, Reward = 2, TurnDegreesPerSecond = 5f * Mathf.Rad2Deg, Wall = WallBehavior.Avoid,
             SplitInto = Fodder, SplitCount = 4, Color = U.Hex(0x9d6fd6),
         };
+
+        // The set-piece bosses. All four share the Siege Boss's frame and wall-breaking.
+
+        static EnemyDef Boss(string id, string name, string description, float health, float armour, float speed,
+            float radius, uint color) => new EnemyDef
+        {
+            Id = id, Name = name, Description = description,
+            MaxHealth = health, Armour = armour, Speed = U.M(speed), Radius = U.M(radius), BreachDamage = 10,
+            BreachLosesRound = true, ShowsHealthBar = true, IsBoss = true, Pressure = 100f / 3f, Reward = 40,
+            TurnDegreesPerSecond = 2.5f * Mathf.Rad2Deg,
+            Wall = WallBehavior.BreachWhereTooNarrow, WallDetection = U.M(150), WallRange = U.M(32), WallDps = 250,
+            Color = U.Hex(color),
+        };
+
+        public static readonly EnemyDef RamChief = Charge(Boss("ram_chief", "Ram Chief",
+            "Winds up, then charges down the road at three times its pace, smashing the first barricade it hits. Enrages when nearly dead.",
+            2600, 10, 36, 21, 0xe0683a));
+
+        static EnemyDef Charge(EnemyDef d)
+        {
+            d.ChargeInterval = U.Sec(9000);
+            d.ChargeWindup = U.Sec(1200);
+            d.ChargeDuration = U.Sec(2000);
+            d.ChargeSpeedMultiplier = 3;
+            d.ChargeWallDamage = 900;
+            d.EnrageThreshold = 0.25f;
+            d.EnrageSpeedMultiplier = 1.4f;
+            return d;
+        }
+
+        public static readonly EnemyDef Shieldwall = Shield(Boss("shieldwall", "Shieldwall",
+            "Carries a tower shield that stops most of any hit from the front. Flank it, bounce a beam into it, or drop shells on it from above.",
+            2800, 12, 32, 22, 0x4f9fd6));
+
+        static EnemyDef Shield(EnemyDef d)
+        {
+            d.ShieldArcDegrees = 140;
+            d.ShieldReduction = 0.8f;
+            return d;
+        }
+
+        public static readonly EnemyDef Warlord = Summoner(Boss("warlord", "Warlord",
+            "Calls a war band to its side at two-thirds and one-third health, standing still while it gathers, and rages at the end.",
+            3200, 10, 34, 22, 0xc9a227));
+
+        static EnemyDef Summoner(EnemyDef d)
+        {
+            d.SummonThresholds = new[] { 0.66f, 0.33f };
+            d.SummonEscort = new[] { (Fodder, 8), (Armoured, 2) };
+            d.SummonPause = U.Sec(1500);
+            d.EnrageThreshold = 0.25f;
+            d.EnrageSpeedMultiplier = 1.5f;
+            return d;
+        }
+
+        public static readonly EnemyDef BloodTotem = Regenerator(Boss("blood_totem", "Blood Totem",
+            "Heals everything around it, and heals itself whenever it is left alone for three seconds. Keep it under fire.",
+            2400, 8, 30, 21, 0xc23b5b));
+
+        static EnemyDef Regenerator(EnemyDef d)
+        {
+            d.HealRadius = U.M(160);
+            d.HealPerPulse = 20;
+            d.HealInterval = U.Sec(1000);
+            d.RegenIdle = U.Sec(3000);
+            d.RegenPerSecond = 80;
+            return d;
+        }
+
+        public static readonly EnemyDef[] All =
+        {
+            Fodder, Runner, Armoured, SiegeElite, SiegeBreaker, SiegeBoss, Sapper, Shaman, Splitter,
+            RamChief, Shieldwall, Warlord, BloodTotem,
+        };
+
+        static System.Collections.Generic.Dictionary<string, EnemyDef> byId;
+
+        /// <summary>Looks an enemy up by its Orc Horde id, as the exported rounds name them.</summary>
+        public static EnemyDef ById(string id)
+        {
+            if (byId == null)
+            {
+                byId = new System.Collections.Generic.Dictionary<string, EnemyDef>();
+                foreach (var e in All) byId[e.Id] = e;
+            }
+            return byId.TryGetValue(id, out var def) ? def : null;
+        }
     }
 
     /// <summary>Ported from orc-horde src/content/walls.ts.</summary>
@@ -173,80 +260,5 @@ namespace OrcHordeFps
             Id = "bombing_run", Name = "Bombing Run", Description = "Strafing corridor along your aim.",
             Cooldown = U.Sec(25000), Damage = 160, Length = U.M(450), Width = U.M(100),
         };
-    }
-
-    /// <summary>
-    /// Quarry Road, from orc-horde src/content/maps/quarryRoad.ts: one wide road
-    /// in from the west, north at the bend, then east to the base.
-    /// </summary>
-    public static class Maps
-    {
-        const float WorldWidth = 2400, WorldHeight = 1800;
-        const float RoadWidth = 320, ShoulderDepth = 160;
-        const float EntryY = 1200, BaseY = 750, PivotX = 960;
-
-        /// <summary>Orc Horde's y runs south; here +Z is north.</summary>
-        static Vector3 P(float x, float y) => new Vector3(U.M(x), 0, U.M(WorldHeight - y));
-
-        static Rect R(float minX, float minY, float maxX, float maxY) =>
-            Rect.MinMaxRect(U.M(minX), U.M(WorldHeight - maxY), U.M(maxX), U.M(WorldHeight - minY));
-
-        static (EnemyDef, float)[] W(params (EnemyDef, float)[] rules) => rules;
-
-        public static MapDef QuarryRoad()
-        {
-            const float h = RoadWidth / 2;
-            return new MapDef
-            {
-                Name = "Quarry Road",
-                Description = "One wide road cut through solid rock. Nowhere for the horde to go but past your guns.",
-                SpawnName = "Quarry Gate", BaseName = "Loading Yard",
-                Width = U.M(WorldWidth), Depth = U.M(WorldHeight),
-                Road = new[]
-                {
-                    R(0, EntryY - h, PivotX + h, EntryY + h),
-                    R(PivotX - h, BaseY - h, PivotX + h, EntryY + h),
-                    R(PivotX - h, BaseY - h, WorldWidth, BaseY + h),
-                },
-                ShoulderDepth = U.M(ShoulderDepth),
-                Spawn = P(80, EntryY),
-                Base = P(WorldWidth - 80, BaseY),
-                PlayerStart = P(WorldWidth - 260, BaseY),
-                PlayerYaw = -90,
-                RockColor = U.Hex(0x4f4a44), FloorColor = U.Hex(0x2e2a26), ShoulderColor = U.Hex(0x6b6152),
-                Rounds = new[]
-                {
-                    new RoundDef
-                    {
-                        Name = "First Contact", StartingHealth = 20, Duration = 60, PressureBudget = 270,
-                        Enemies = W((Enemies.Fodder, 150)),
-                    },
-                    new RoundDef
-                    {
-                        Name = "Quick Feet", StartingHealth = 20, Duration = 70, PressureBudget = 480,
-                        Enemies = W((Enemies.Fodder, 105), (Enemies.Runner, 30)),
-                    },
-                    new RoundDef
-                    {
-                        Name = "Iron Ranks", StartingHealth = 20, Duration = 80, PressureBudget = 675,
-                        Enemies = W((Enemies.Fodder, 82.5f), (Enemies.Runner, 25), (Enemies.Armoured, 20)),
-                    },
-                    new RoundDef
-                    {
-                        Name = "Breakers", StartingHealth = 20, Duration = 90, PressureBudget = 1050,
-                        Enemies = W((Enemies.Fodder, 67.5f), (Enemies.Runner, 20), (Enemies.Armoured, 25),
-                            (Enemies.SiegeElite, 10)),
-                    },
-                    new RoundDef
-                    {
-                        Name = "The Last Load", StartingHealth = 20, Duration = 100, PressureBudget = 1500,
-                        Enemies = W((Enemies.Fodder, 60), (Enemies.Runner, 20), (Enemies.Armoured, 25),
-                            (Enemies.SiegeElite, 15)),
-                        Guaranteed = new[] { (Enemies.SiegeElite, 2, 60f, 2.5f) },
-                        Bosses = new[] { (Enemies.SiegeBoss, 75f, 10f) },
-                    },
-                },
-            };
-        }
     }
 }

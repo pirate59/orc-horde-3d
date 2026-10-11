@@ -44,6 +44,12 @@ namespace OrcHordeFps
             return m;
         }
 
+        static Material vertexLit;
+
+        /// <summary>Lit, coloured by the mesh's vertex colours: for the combined terrain.</summary>
+        public static Material VertexLit() =>
+            vertexLit != null ? vertexLit : vertexLit = new Material(Shader.Find("OrcHorde/VertexLit"));
+
         /// <summary>Unlit, alpha-blended and vertex-coloured: for effects, beams and ghosts.</summary>
         public static Material Unlit(Color c)
         {
@@ -211,7 +217,7 @@ namespace OrcHordeFps
             {
                 if (i >= Enemy.All.Count) continue;
                 var e = Enemy.All[i];
-                if (skip != null && skip.Contains(e)) continue;
+                if (!e.Targetable || (skip != null && skip.Contains(e))) continue;
                 var d = e.transform.position - center;
                 d.y = 0;
                 float reach = radius + e.Def.Radius;

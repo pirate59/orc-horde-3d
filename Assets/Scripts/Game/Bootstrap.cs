@@ -10,30 +10,41 @@ namespace OrcHordeFps
     {
         void Awake()
         {
-            var map = Maps.QuarryRoad();
+            var map = Session.Current;
+            var grid = new HexGrid(map);
 
-            SetUpLighting();
+            SetUpLighting(map);
             var world = new GameObject("World").transform;
-            MapBuilder.Build(map, world);
+            MapBuilder.Build(map, grid, world);
             MapBuilder.BakeNavMesh(map);
+            Links.Connect(map);
 
             var gm = new GameObject("Game").AddComponent<GameManager>();
-            PlayerController.Create(map.PlayerStart, map.PlayerYaw);
-            gm.Init(map);
+            var (start, yaw) = MapBuilder.PlayerStart(map, grid);
+            PlayerController.Create(start, yaw);
+            gm.Init(map, grid);
             gm.gameObject.AddComponent<Hud>();
             SmokeTest.AttachIfRequested();
         }
 
-        static void SetUpLighting()
+        /// <summary>A dusk light, tinted by the map's biome: cold over snow, warm over canyon.</summary>
+        static void SetUpLighting(MapData map)
         {
+            var (sunColor, sky) = map.biome switch
+            {
+                "snow" => (U.Hex(0xdfe8ff), U.Hex(0x3a4250)),
+                "canyon" => (U.Hex(0xffc28a), U.Hex(0x3a2e2a)),
+                "grassland" => (U.Hex(0xfff0c8), U.Hex(0x2c3530)),
+                _ => (U.Hex(0xffd2a8), U.Hex(0x2a2f3a)),
+            };
             var sun = new GameObject("Sun").AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.color = U.Hex(0xffd2a8);
+            sun.color = sunColor;
             sun.intensity = 1.15f;
             sun.shadows = LightShadows.Soft;
             sun.transform.rotation = Quaternion.Euler(38, -50, 0);
 
-            var dusk = U.Hex(0x2a2f3a);
+            var dusk = sky;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = U.Hex(0x5a6478);
             RenderSettings.ambientEquatorColor = U.Hex(0x4a4440);

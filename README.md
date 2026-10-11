@@ -6,7 +6,7 @@ Unity **6000.6.4f1**, built-in render pipeline, legacy Input Manager. It has no 
 
 ## Play
 
-Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it opens on its own the first time). Then press Play.
+Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it opens on its own the first time). Then press Play. The game starts on the last map played; Esc → **Choose map** lists the campaign. Each map unlocks when you hold the one before it, and the two test grounds are always open.
 
 | | |
 | --- | --- |
@@ -25,16 +25,29 @@ Ported from `orc-horde/src/content`. The original numbers are kept in their orig
 - **Enemies:** Fodder, Runner, Armoured, Siege Elite, Siege Breaker, Siege Boss, Sapper, Shaman, Splitter, with armour using the original quarter-damage floor
 - **Barricade:** 8 per layout, carves the navmesh, restored on every attempt
 - **Abilities:** Mortar and Bombing Run
-- **Map:** Quarry Road and its five rounds, including the round 5 Siege Boss set piece
+- **Maps:** all 14 campaign maps and both test grounds, with every round, spawn gate, boss event, bridge and tunnel
+- **Bosses:** Siege Boss, Ram Chief (charges), Shieldwall (frontal shield), Warlord (summons a war band), Blood Totem (heals and regenerates)
 
 Deliberate deviations are marked `DEVIATION` in the code. The main ones: horde size is scaled by `GameManager.HordeScale` (0.12), the later towers get small starting limits because there's no skill tree yet, and units that normally avoid walls will chew through a fully sealed road.
+
+## Maps
+
+The maps aren't copied by hand. `Tools/export-maps.sh` bundles Orc Horde's own map code with its esbuild, runs the hex layout pass, and writes each map to `Assets/Resources/Maps.json` as a character grid (one character per hex), plus spawns, base, links and rounds. Re-run it whenever Orc Horde's maps change:
+
+```bash
+Tools/export-maps.sh ~/code/orc-horde/branches/claude-new-build
+```
+
+In 3D, path cells are open floor and tower-ground cells are a low step (a tower stands at the centre of one, as in Orc Horde). The remaining rock is cliff. Bridges carry orcs over a lane on a deck you can see, and tunnels hide them in the rock until they come out the other side.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `Assets/Scripts/Content` | Definitions and ported content |
-| `Assets/Scripts/World` | Raises the 2D map into 3D blocks and bakes the navmesh |
+| `Assets/Scripts/Content` | Definitions, ported content, map data model |
+| `Assets/Resources/Maps.json` | Exported Orc Horde maps (generated) |
+| `Tools/` | Map exporter |
+| `Assets/Scripts/World` | Hex grid, terrain meshes, navmesh, bridges and tunnels |
 | `Assets/Scripts/Actors` | Enemies, towers, barricades, projectiles |
 | `Assets/Scripts/Player` | Movement, rifle, health, abilities, build mode |
 | `Assets/Scripts/Game` | Bootstrap, round loop, HUD, smoke test |
@@ -42,9 +55,9 @@ Deliberate deviations are marked `DEVIATION` in the code. The main ones: horde s
 
 ## Smoke test
 
-Builds a macOS player, places a layout, plays two rounds at 3× speed, and writes screenshots and a summary to `Logs/smoke/`:
+Builds a macOS player, then on each map places a layout, plays round 1 at 4× speed, and writes overhead and fight screenshots plus a summary line to `Logs/smoke/`:
 
 ```bash
 Unity -batchmode -quit -projectPath . -executeMethod ProjectSetup.BuildMac
-Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/smoke"
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/smoke" -smokemaps all
 ```

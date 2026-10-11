@@ -3,11 +3,12 @@ using UnityEngine;
 
 namespace OrcHordeFps
 {
-    public enum Phase { Build, Combat, Won, Lost, CampaignComplete }
+    public enum Phase { Build, Combat, Won, Lost, MapHeld }
 
     /// <summary>
     /// The round loop, after Orc Horde: build, fight, then win or lose and go
-    /// again with the layout kept and the barricades put back up.
+    /// again with the layout kept and the barricades put back up. Hold all of a
+    /// map's rounds and the next map opens.
     /// </summary>
     public sealed class GameManager : MonoBehaviour
     {
@@ -22,12 +23,14 @@ namespace OrcHordeFps
         const int MaxAlive = 110;
         /// <summary>Spawning stops short of the round's end so its tail can arrive.</summary>
         const float SpawnWindowFraction = 0.85f;
-        /// <summary>Orc Horde swings its spawn intensity between these, in segments of a few seconds.</summary>
+        /// <summary>Spawn intensity swings between these, in segments of a few seconds, as Orc Horde's pacing does.</summary>
         const float MinIntensity = 0.6f, MaxIntensity = 1.4f;
+        const float SpawnScatter = 2.5f;
 
-        public MapDef Map { get; private set; }
+        public MapData Map { get; private set; }
+        public HexGrid Grid { get; private set; }
         public int RoundIndex { get; private set; }
-        public RoundDef Round => Map.Rounds[RoundIndex];
+        public RoundData Round => Map.rounds[RoundIndex];
         public Phase Phase { get; private set; }
         public float RoundTime { get; private set; }
         public int BaseHealth { get; private set; }
@@ -35,6 +38,7 @@ namespace OrcHordeFps
         public int Currency { get; private set; }
         public bool Paused { get; private set; }
         public bool HelpOpen { get; set; } = true;
+        public bool MapMenuOpen { get; set; }
 
         public string Banner { get; private set; } = "";
         public float BannerUntil { get; private set; }
@@ -42,15 +46,17 @@ namespace OrcHordeFps
 
         public float SpawnProgress => budget <= 0 ? 0 : Mathf.Clamp01(spent / budget);
 
-        readonly List<(float at, EnemyDef def)> scheduled = new List<(float, EnemyDef)>();
+        readonly List<(float at, EnemyDef def, string spawn)> scheduled = new List<(float, EnemyDef, string)>();
         readonly List<(float at, string text)> warnings = new List<(float, string)>();
+        readonly Dictionary<EnemyDef, float> spentByType = new Dictionary<EnemyDef, float>();
         float budget, spent, pool, intensity = 1f, nextSegment;
         EnemyDef next;
 
-        public void Init(MapDef map)
+        public void Init(MapData map, HexGrid grid)
         {
             I = this;
             Map = map;
+            Grid = grid;
             RoundIndex = 0;
             EnterBuild();
         }
@@ -66,11 +72,11 @@ namespace OrcHordeFps
         {
             Phase = Phase.Build;
             RoundTime = 0;
-            BaseHealth = Round.StartingHealth;
+            BaseHealth = Round.startingHealth;
             ClearHorde();
             foreach (var b in Barricade.All) b.Restore();
             PlayerHealth.I?.Revive();
-            Announce($"Round {RoundIndex + 1}: {Round.Name}  —  build your line, press G to start", Color.white, 6f);
+            Announce($"Round {RoundIndex + 1}: {Round.name}  —  build your line, press G to start", Color.white, 6f);
         }
 
         public void StartRound()
@@ -78,26 +84,37 @@ namespace OrcHordeFps
             if (Phase != Phase.Build) return;
             Phase = Phase.Combat;
             RoundTime = 0;
-            budget = Round.PressureBudget * HordeScale;
+            budget = Round.pressureBudget * HordeScale;
             spent = pool = 0;
             nextSegment = 0;
-            next = PickWeighted();
+            spentByType.Clear();
+            next = null;
 
             scheduled.Clear();
             warnings.Clear();
-            foreach (var g in Round.Guaranteed)
-                for (int i = 0; i < g.count; i++) scheduled.Add((g.at + i * g.spacing, g.def));
-            foreach (var boss in Round.Bosses)
+            foreach (var g in Round.guaranteed)
             {
-                scheduled.Add((boss.at, boss.def));
-                warnings.Add((boss.at - boss.warning, $"{boss.def.Name} approaching {Map.SpawnName}!"));
+                var def = Enemies.ById(g.enemy);
+                if (def == null) continue;
+                for (int i = 0; i < g.count; i++) scheduled.Add(((g.atMs + i * g.spacingMs) / 1000f, def, g.spawn));
             }
-            Announce($"{Round.Name}  —  here they come", U.Hex(0xffb347));
+            foreach (var boss in Round.bosses)
+            {
+                var def = Enemies.ById(boss.enemy);
+                if (def == null) { Debug.LogWarning($"Unknown boss {boss.enemy}"); continue; }
+                scheduled.Add((boss.atMs / 1000f, def, boss.spawn));
+                warnings.Add(((boss.atMs - boss.warningMs) / 1000f, $"{def.Name} approaching {Map.Spawn(boss.spawn).name}!"));
+            }
+            Announce($"{Round.name}  —  here they come", U.Hex(0xffb347));
         }
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape)) SetPaused(!Paused);
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (MapMenuOpen) MapMenuOpen = false;
+                else SetPaused(!Paused);
+            }
             if (Input.GetKeyDown(KeyCode.H)) HelpOpen = !HelpOpen;
             if (Paused) return;
 
@@ -113,13 +130,18 @@ namespace OrcHordeFps
                 case Phase.Build: StartRound(); break;
                 case Phase.Won: RoundIndex++; EnterBuild(); break;
                 case Phase.Lost: EnterBuild(); break;
-                case Phase.CampaignComplete: RoundIndex = 0; EnterBuild(); break;
+                case Phase.MapHeld:
+                    var nextMap = Session.NextMap(Map.id);
+                    if (nextMap != null) Session.Play(nextMap);
+                    else { RoundIndex = 0; EnterBuild(); }
+                    break;
             }
         }
 
         void TickCombat(float dt)
         {
             RoundTime += dt;
+            float ms = RoundTime * 1000f;
             float window = Round.Duration * SpawnWindowFraction;
 
             if (RoundTime >= nextSegment)
@@ -129,12 +151,15 @@ namespace OrcHordeFps
             }
             if (RoundTime < window && spent < budget) pool += budget / window * intensity * dt;
 
-            while (next != null && pool >= next.Pressure && spent < budget && Enemy.All.Count < MaxAlive)
+            while (spent < budget && Enemy.All.Count < MaxAlive)
             {
-                if (Enemy.Spawn(next, Map.Spawn) == null) break;
+                next ??= PickEnemy(ms);
+                if (next == null || pool < next.Pressure) break;
+                if (Enemy.Spawn(next, Map.SpawnPosition(PickSpawn(ms)), SpawnScatter) == null) break;
                 pool -= next.Pressure;
                 spent += next.Pressure;
-                next = PickWeighted();
+                spentByType[next] = spentByType.TryGetValue(next, out var s) ? s + next.Pressure : next.Pressure;
+                next = null;
             }
 
             for (int i = warnings.Count - 1; i >= 0; i--)
@@ -144,24 +169,56 @@ namespace OrcHordeFps
                     warnings.RemoveAt(i);
                 }
             for (int i = scheduled.Count - 1; i >= 0; i--)
-                if (RoundTime >= scheduled[i].at && Enemy.Spawn(scheduled[i].def, Map.Spawn, 1f) != null)
-                    scheduled.RemoveAt(i);
+            {
+                var (at, def, spawn) = scheduled[i];
+                if (RoundTime < at) continue;
+                var gate = string.IsNullOrEmpty(spawn) ? PickSpawn(ms) : spawn;
+                if (Enemy.Spawn(def, Map.SpawnPosition(gate), 1f) != null) scheduled.RemoveAt(i);
+            }
 
             bool spawningDone = RoundTime >= window && scheduled.Count == 0;
             if (spawningDone && Enemy.All.Count == 0) Win();
         }
 
-        EnemyDef PickWeighted()
+        /// <summary>A weighted draw among the rules active now whose share of the budget still has room.</summary>
+        EnemyDef PickEnemy(float ms)
         {
             float total = 0;
-            foreach (var r in Round.Enemies) total += r.weight;
+            foreach (var r in Round.enemyRules)
+                if (Eligible(r, ms)) total += r.weight;
+            if (total <= 0) return null;
             float roll = Random.value * total;
-            foreach (var r in Round.Enemies)
+            foreach (var r in Round.enemyRules)
             {
+                if (!Eligible(r, ms)) continue;
                 roll -= r.weight;
-                if (roll <= 0) return r.def;
+                if (roll <= 0) return Enemies.ById(r.enemy);
             }
-            return Round.Enemies[Round.Enemies.Length - 1].def;
+            return null;
+        }
+
+        bool Eligible(EnemyRule r, float ms)
+        {
+            if (ms < r.fromMs || ms > r.untilMs) return false;
+            var def = Enemies.ById(r.enemy);
+            if (def == null) return false;
+            float used = spentByType.TryGetValue(def, out var s) ? s : 0;
+            return used + def.Pressure <= r.maxFraction * budget + 0.001f;
+        }
+
+        string PickSpawn(float ms)
+        {
+            float total = 0;
+            foreach (var r in Round.spawnRules)
+                if (ms >= r.fromMs && ms <= r.untilMs) total += r.weight;
+            float roll = Random.value * total;
+            foreach (var r in Round.spawnRules)
+            {
+                if (ms < r.fromMs || ms > r.untilMs) continue;
+                roll -= r.weight;
+                if (roll <= 0) return r.spawn;
+            }
+            return Map.spawns[0].id;
         }
 
         public void OnKilled(Enemy e)
@@ -175,16 +232,19 @@ namespace OrcHordeFps
             if (Phase != Phase.Combat) return;
             BaseHealth = Mathf.Max(0, BaseHealth - e.Def.BreachDamage);
             Fx.Burst(Map.Base + Vector3.up * 2, 3f, U.Hex(0xff4a4a), 0.4f);
-            if (e.Def.BreachLosesRound) Lose($"The {e.Def.Name} reached the {Map.BaseName}.");
-            else if (BaseHealth <= 0) Lose($"The {Map.BaseName} has fallen.");
+            if (e.Def.BreachLosesRound) Lose($"The {e.Def.Name} reached the {Map.endpoint.name}.");
+            else if (BaseHealth <= 0) Lose($"The {Map.endpoint.name} has fallen.");
         }
 
         void Win()
         {
-            if (RoundIndex >= Map.Rounds.Length - 1)
+            if (RoundIndex >= Map.rounds.Length - 1)
             {
-                Phase = Phase.CampaignComplete;
-                Announce($"{Map.Name} held!  All {Map.Rounds.Length} rounds survived. Press G to play again.", U.Hex(0x5effc4), 30f);
+                Phase = Phase.MapHeld;
+                Session.MarkHeld(Map.id);
+                var nextMap = Session.NextMap(Map.id);
+                string onward = nextMap != null ? $"Press G to march on to {Session.Catalog.Get(nextMap).name}." : "Press G to play it again.";
+                Announce($"{Map.name} held!  {onward}", U.Hex(0x5effc4), 30f);
             }
             else
             {
@@ -211,19 +271,17 @@ namespace OrcHordeFps
         public void SetPaused(bool paused)
         {
             Paused = paused;
+            MapMenuOpen = false;
             Time.timeScale = paused ? 0f : 1f;
         }
 
-        public void RestartCampaign()
+        public void RestartMap() => Session.Play(Map.id);
+
+        void OnDestroy()
         {
-            foreach (var t in Tower.All.ToArray()) Destroy(t.gameObject);
-            foreach (var b in Barricade.All.ToArray()) Destroy(b.gameObject);
-            Tower.All.Clear();
-            Barricade.All.Clear();
-            Kills = Currency = 0;
-            RoundIndex = 0;
-            SetPaused(false);
-            EnterBuild();
+            Links.Clear();
+            MapBuilder.ClearNavMesh();
+            if (I == this) I = null;
         }
     }
 }
