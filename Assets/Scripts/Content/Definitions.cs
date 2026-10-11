@@ -94,7 +94,7 @@ namespace OrcHordeFps
     public sealed class WallDef
     {
         public string Id, Name, Description;
-        public int Limit;
+        public int Limit, Cells;
         public float Health, Length, Thickness, Height;
         public Color Color;
     }

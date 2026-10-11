@@ -13,9 +13,11 @@ Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it open
 | Move | WASD, Shift to sprint, Space to jump |
 | Shoot | Left mouse, R to reload. Headshots do ×2 |
 | Abilities | Hold Q (Mortar) or E (Bombing Run) to aim, release to fire |
-| Build (between rounds) | 1–5 for towers, 6 for barricade, R to rotate, left click to place, X or right click to remove, 0 to put away |
+| Build (between rounds) | 1–5 for towers, 6 for barricade, R to turn a barricade, left click to place, F to pick up and move, X or right click to remove, 0 to put away |
+| Tactical view (between rounds) | M. WASD pan, Q/E turn, wheel zoom, place with the mouse, T to drop in on foot there |
+| Route preview | V toggles the lines from each gate to the base; red means a road is sealed and orcs will break through |
 | Skill tree (between rounds) | B or Tab |
-| Start round / continue | G |
+| Start the wave / continue | G |
 | Help / pause | H / Esc |
 
 ## What came from Orc Horde
@@ -24,7 +26,7 @@ Ported from `orc-horde/src/content`. The original numbers are kept in their orig
 
 - **Towers:** Machine Gun, Cannon (lobs over barricades), Laser (pierces and ricochets), Arc Tower (slows), Flame Thrower (cone)
 - **Enemies:** Fodder, Runner, Armoured, Siege Elite, Siege Breaker, Siege Boss, Sapper, Shaman, Splitter, with armour using the original quarter-damage floor
-- **Barricade:** 8 per layout, carves the navmesh, restored on every attempt
+- **Barricade:** a run of 3 hex cells along one of the grid's three axes, as in Orc Horde; 8 per layout, carves the navmesh with its ends fused to the rock or the next wall, restored on every attempt
 - **Abilities:** Mortar and Bombing Run
 - **Maps:** all 14 campaign maps and both test grounds, with every round, spawn gate, boss event, bridge and tunnel
 - **Bosses:** Siege Boss, Ram Chief (charges), Shieldwall (frontal shield), Warlord (summons a war band), Blood Totem (heals and regenerates)
@@ -37,7 +39,13 @@ Deliberate deviations are marked `DEVIATION` in the code. The main ones:
 - **Rewards.** Each kill pays original budget ÷ spawned budget times its Orc Horde reward, so currency per round matches Orc Horde's.
 - **Sealed roads.** Units that normally avoid walls will chew through a fully sealed road.
 
-Currency, skills and unlocked maps are saved in PlayerPrefs. Esc → **Reset campaign** starts over.
+## Build phase
+
+Before every wave you have as long as you like. Walk the map, or press M for the tactical view, and lay out the line. The panel on the right briefs the next wave: which gates it uses and how long each walk is, the enemy mix and about how many orcs, bosses and when they arrive, and the horde's toughness. The route lines update as you build, so you can see a barricade line reroute the horde, or seal a road (red) and force a fight at the wall. Placed towers show their reach while you build.
+
+Each map's layout is saved as you change it and restored when you come back, as in Orc Horde. Esc → **Clear layout** starts afresh.
+
+Currency, skills, unlocked maps and layouts are saved in PlayerPrefs. Esc → **Reset campaign** starts over.
 
 ## Maps
 
@@ -83,5 +91,11 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/campaign" -smokeca
 ```
 
 Each line logs the round's result, currency, skills bought, toughness, mean/95th-percentile frame time and the most orcs alive at once. Add `-smokenogun` for a towers-only run.
+
+**Build phase:** on one map, from the tactical view, it places towers and a barricade line through the same API the mouse uses. It checks that invalid spots are refused, reloads the map to confirm the layout comes back, then plays the round against the line:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/build" -smokebuild quarry_road
+```
 
 Test runs keep their own save slot and never touch your campaign.

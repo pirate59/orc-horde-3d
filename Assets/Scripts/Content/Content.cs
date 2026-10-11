@@ -239,7 +239,8 @@ namespace OrcHordeFps
         {
             Id = "barricade", Name = "Barricade",
             Description = "Redirects the horde. Destructible during a round, restored on every attempt.",
-            Limit = 8, Health = 1200, Length = U.M(3 * 32), Thickness = U.M(32), Height = 1.6f,
+            // Three hex cells end to end, as Orc Horde's barricades are since its maps went hexagonal.
+            Limit = 8, Health = 1200, Cells = 3, Length = U.M(3 * 60), Thickness = U.M(32), Height = 1.6f,
             Color = U.Hex(0x8d6e4f),
         };
     }

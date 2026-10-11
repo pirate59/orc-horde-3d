@@ -16,6 +16,12 @@ namespace OrcHordeFps
         CharacterController controller;
         float pitch, yaw, verticalSpeed;
 
+        // Tactical view: an overhead camera for laying out the line between rounds.
+        const float TacticalPanSpeed = 28f, TacticalTurnSpeed = 90f, TacticalMinHeight = 12f, TacticalMaxHeight = 110f;
+        public bool Tactical { get; private set; }
+        Vector3 tacticalFocus;
+        float tacticalYaw, tacticalHeight = 40f;
+
         public static PlayerController Create(Vector3 position, float yaw)
         {
             var go = new GameObject("Player");
@@ -57,6 +63,68 @@ namespace OrcHordeFps
 
         public bool InputLive => !GameManager.I.Paused && !GameManager.I.ShopOpen && PlayerHealth.I.Alive;
 
+        /// <summary>
+        /// Lifts the camera overhead (or brings it back down). Only between rounds:
+        /// the fight is fought on foot.
+        /// </summary>
+        public void SetTactical(bool on)
+        {
+            if (on == Tactical || (on && GameManager.I.Phase != Phase.Build)) return;
+            Tactical = on;
+            if (on)
+            {
+                tacticalFocus = transform.position;
+                tacticalYaw = yaw;
+                Cam.transform.SetParent(null, true);
+                PlaceTacticalCamera();
+            }
+            else
+            {
+                Cam.transform.SetParent(transform, false);
+                Cam.transform.localPosition = new Vector3(0, EyeHeight, 0);
+                Cam.transform.localRotation = Quaternion.Euler(pitch, 0, 0);
+            }
+        }
+
+        /// <summary>Points the tactical view at a spot, from a given height.</summary>
+        public void FocusTactical(Vector3 point, float height)
+        {
+            tacticalFocus = point;
+            tacticalHeight = Mathf.Clamp(height, TacticalMinHeight, TacticalMaxHeight);
+            if (Tactical) PlaceTacticalCamera();
+        }
+
+        void PlaceTacticalCamera()
+        {
+            var back = Quaternion.Euler(0, tacticalYaw, 0) * new Vector3(0, 1f, -0.75f);
+            Cam.transform.position = tacticalFocus + back * tacticalHeight;
+            Cam.transform.LookAt(tacticalFocus);
+        }
+
+        /// <summary>WASD pans, Q/E turn, the wheel zooms; T drops the player in at the point under the cursor.</summary>
+        void UpdateTactical()
+        {
+            var map = GameManager.I.Map;
+            var turn = Quaternion.Euler(0, tacticalYaw, 0);
+            var input = new Vector3(Input.GetAxisRaw("Horizontal"), 0, Input.GetAxisRaw("Vertical"));
+            float speed = TacticalPanSpeed * (Input.GetKey(KeyCode.LeftShift) ? 2.5f : 1f) * (tacticalHeight / 40f);
+            tacticalFocus += turn * Vector3.ClampMagnitude(input, 1f) * speed * Time.unscaledDeltaTime;
+            tacticalFocus.x = Mathf.Clamp(tacticalFocus.x, 0, map.Width);
+            tacticalFocus.z = Mathf.Clamp(tacticalFocus.z, 0, map.Depth);
+            if (Input.GetKey(KeyCode.Q)) tacticalYaw -= TacticalTurnSpeed * Time.unscaledDeltaTime;
+            if (Input.GetKey(KeyCode.E)) tacticalYaw += TacticalTurnSpeed * Time.unscaledDeltaTime;
+            tacticalHeight = Mathf.Clamp(tacticalHeight * (1f - Input.mouseScrollDelta.y * 0.12f), TacticalMinHeight, TacticalMaxHeight);
+            PlaceTacticalCamera();
+
+            if (Input.GetKeyDown(KeyCode.T) &&
+                Physics.Raycast(AimRay, out var hit, 400f, (1 << Layers.Road) | (1 << Layers.BuildGround), QueryTriggerInteraction.Ignore))
+            {
+                Teleport(hit.point);
+                yaw = tacticalYaw;
+                SetTactical(false);
+            }
+        }
+
         public void Teleport(Vector3 position)
         {
             controller.enabled = false;
@@ -67,9 +135,13 @@ namespace OrcHordeFps
 
         void Update()
         {
-            Cursor.lockState = InputLive ? CursorLockMode.Locked : CursorLockMode.None;
-            Cursor.visible = !InputLive;
+            if (Tactical && GameManager.I.Phase != Phase.Build) SetTactical(false);
+            if (InputLive && Input.GetKeyDown(KeyCode.M)) SetTactical(!Tactical);
+            bool locked = InputLive && !Tactical;
+            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !locked;
             if (!InputLive) return;
+            if (Tactical) { UpdateTactical(); return; }
 
             yaw += Input.GetAxisRaw("Mouse X") * Sensitivity;
             pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * Sensitivity, -85f, 85f);
@@ -92,8 +164,8 @@ namespace OrcHordeFps
             controller.Move(move * Time.deltaTime);
         }
 
-        /// <summary>The ray from the centre of the screen.</summary>
-        public Ray AimRay => new Ray(Cam.transform.position, Cam.transform.forward);
+        /// <summary>The ray from the centre of the screen, or from the mouse in the tactical view.</summary>
+        public Ray AimRay => Tactical ? Cam.ScreenPointToRay(Input.mousePosition) : new Ray(Cam.transform.position, Cam.transform.forward);
 
         /// <summary>A small upward kick on firing.</summary>
         public void Kick(float degrees) => pitch = Mathf.Clamp(pitch - degrees, -85f, 85f);

@@ -49,11 +49,14 @@ namespace OrcHordeFps
             DrawTopBar(gm);
             DrawPlayer();
             DrawAbilities();
+            bool tactical = PlayerController.I != null && PlayerController.I.Tactical;
             if (gm.Phase == Phase.Build && !gm.ShopOpen) DrawBuildBar();
             DrawCurrency(gm);
-            if (!gm.ShopOpen) DrawCrosshair();
+            if (gm.Phase == Phase.Build && !gm.ShopOpen && !gm.Paused) DrawBriefing(gm);
+            if (gm.Phase == Phase.Build && !gm.ShopOpen) DrawInspection();
+            if (!gm.ShopOpen && !tactical) DrawCrosshair();
             if (!gm.ShopOpen) DrawBanner(gm);
-            if (gm.HelpOpen && !gm.Paused && !gm.ShopOpen) DrawHelp();
+            if (gm.HelpOpen && !gm.Paused && !gm.ShopOpen && !tactical) DrawHelp();
             if (gm.ShopOpen && !gm.Paused) DrawShop(gm);
             if (gm.Paused) DrawPause(gm);
         }
@@ -64,7 +67,7 @@ namespace OrcHordeFps
             Box(r, Panel);
             string phase = gm.Phase switch
             {
-                Phase.Build => "<color=#5effc4>BUILD</color>",
+                Phase.Build => "<color=#5effc4>BUILD</color>  ·  <b>G</b> starts the wave",
                 Phase.Combat => $"<color=#ffb347>FIGHT</color>  {Mathf.Max(0, gm.Round.Duration - gm.RoundTime):0}s" +
                     (gm.Toughness > 1.01f ? $"  <color=#ff8a8a>horde ×{gm.Toughness:0.0} health</color>" : ""),
                 Phase.Won => "<color=#5effc4>ROUND WON</color>",
@@ -162,7 +165,9 @@ namespace OrcHordeFps
             {
                 BuildTool.Tower => $"<b>{bc.SelectedTower.Name}</b> — {bc.SelectedTower.Description}",
                 BuildTool.Barricade => $"<b>Barricade</b> — {Walls.Barricade.Description}",
-                _ => "Pick a tower [1–5] or barricade [6]. X removes the one you aim at. B opens the skill tree. G starts the round.",
+                _ => PlayerController.I.Tactical
+                    ? "Tactical view: WASD pan · Q/E turn · wheel zoom · T walk from here · M back on foot"
+                    : "Pick a tower [1–5] or barricade [6]. M for the tactical view. B skill tree. G starts the wave.",
             };
             GUI.Label(new Rect(Screen.width / 2f - S(420), y - S(56), S(840), S(26)), info, new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
             if (!string.IsNullOrEmpty(bc.Hint))
@@ -221,7 +226,7 @@ namespace OrcHordeFps
 
         void DrawHelp()
         {
-            var r = new Rect(S(20), S(100), S(340), S(400));
+            var r = new Rect(S(20), S(100), S(340), S(440));
             Box(r, Panel);
             GUI.Label(new Rect(r.x + S(14), r.y + S(10), r.width - S(28), r.height - S(20)),
                 $"<b>{GameManager.I.Map.name.ToUpper()}</b>\n" +
@@ -232,7 +237,9 @@ namespace OrcHordeFps
                 "<b>Between rounds</b>\n" +
                 "1–5 towers · 6 barricade · R rotate\n" +
                 "Left click place · X / right click remove\n" +
-                "0 put away · <b>B skill tree</b> · <b>G start round</b>\n\n" +
+                "F pick up and move · 0 put away\n" +
+                "<b>M tactical view</b> · V routes · <b>B skill tree</b>\n" +
+                "<b>G start the wave</b>\n\n" +
                 "Towers stand on the raised ground beside the path, one per hex. Barricades go on the path and reroute the horde.\n\n" +
                 "H hide help · Esc pause / choose map", small);
         }
@@ -243,7 +250,7 @@ namespace OrcHordeFps
             var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
             if (gm.MapMenuOpen) { DrawMapMenu(gm, btn); return; }
 
-            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(160), S(320), S(320));
+            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(185), S(320), S(370));
             Box(r, Panel);
             GUI.Label(new Rect(r.x, r.y + S(10), r.width, S(40)), "Paused", banner);
             float y = r.y + S(60);
@@ -256,6 +263,7 @@ namespace OrcHordeFps
             if (Button("Resume")) gm.SetPaused(false);
             if (Button("Choose map")) gm.MapMenuOpen = true;
             if (Button("Restart map")) gm.RestartMap();
+            if (gm.Phase == Phase.Build && Button("Clear layout")) { BuildController.ClearLayout(); gm.SetPaused(false); }
             if (Button("Reset campaign")) gm.ResetCampaign();
             if (Button("Quit"))
             {
@@ -265,6 +273,87 @@ namespace OrcHordeFps
                 Application.Quit();
 #endif
             }
+        }
+
+        /// <summary>
+        /// What the next wave brings: its gates and how long each walk to the base
+        /// is, the enemy mix, bosses and when they come, and how tough the horde is.
+        /// Read from the same rules the round will spawn by.
+        /// </summary>
+        void DrawBriefing(GameManager gm)
+        {
+            var round = gm.Round;
+            var lines = new System.Text.StringBuilder();
+            lines.Append($"<b>NEXT WAVE</b>  <color=#bbb>{round.Duration:0}s · base {gm.MaxBaseHealth}</color>\n");
+            float tough = GameManager.ToughnessFor(round.pressureBudget);
+            if (tough > 1.01f) lines.Append($"<color=#ff8a8a>Orcs have ×{tough:0.0} health</color>\n");
+
+            lines.Append("\n<b>Gates</b>\n");
+            var routes = RoutePreview.I != null ? RoutePreview.I.Routes : null;
+            if (routes != null)
+                foreach (var r in routes)
+                {
+                    string walk = r.Sealed ? "<color=#ff6a6a>SEALED — they'll break through</color>"
+                        : $"{r.Length:0} m, ~{r.Length / Enemies.Fodder.Speed:0}s walk";
+                    string share = r.Share > 0 ? $"{r.Share:P0}" : "boss";
+                    lines.Append($"{r.Gate.name}  <color=#bbb>{share} · {walk}</color>\n");
+                }
+
+            lines.Append("\n<b>Horde</b>\n");
+            var weights = new System.Collections.Generic.Dictionary<string, float>();
+            float total = 0, pressure = 0;
+            foreach (var e in round.enemyRules)
+            {
+                weights[e.enemy] = (weights.TryGetValue(e.enemy, out var w) ? w : 0) + e.weight;
+                total += e.weight;
+                var def = Enemies.ById(e.enemy);
+                if (def != null) pressure += e.weight * def.Pressure;
+            }
+            foreach (var kv in weights)
+            {
+                var def = Enemies.ById(kv.Key);
+                if (def == null) continue;
+                lines.Append($"<color=#{ColorUtility.ToHtmlStringRGB(def.Color)}>■</color> {def.Name}  <color=#bbb>{kv.Value / total:P0}</color>\n");
+            }
+            if (pressure > 0)
+                lines.Append($"<color=#bbb>about {GameManager.FieldedBudget(round.pressureBudget) / (pressure / total):0} orcs</color>\n");
+
+            if (round.bosses.Length > 0 || round.guaranteed.Length > 0)
+            {
+                lines.Append("\n<b>Set pieces</b>\n");
+                foreach (var b in round.bosses)
+                    lines.Append($"<color=#ff8a8a>{Enemies.ById(b.enemy)?.Name ?? b.enemy}</color>  <color=#bbb>{b.atMs / 1000:0}s · {gm.Map.Spawn(b.spawn).name}</color>\n");
+                foreach (var g in round.guaranteed)
+                    lines.Append($"{g.count}× {Enemies.ById(g.enemy)?.Name ?? g.enemy}  <color=#bbb>{g.atMs / 1000:0}s</color>\n");
+            }
+
+            var text = lines.ToString();
+            float h = small.CalcHeight(new GUIContent(text), S(260)) + S(20);
+            var rect = new Rect(Screen.width - S(300), S(96), S(280), h);
+            Box(rect, Panel);
+            GUI.Label(new Rect(rect.x + S(12), rect.y + S(10), S(260), h), text, small);
+        }
+
+        /// <summary>What the aim rests on, between rounds: its numbers and what can be done with it.</summary>
+        void DrawInspection()
+        {
+            var bc = BuildController.I;
+            if (bc == null || bc.Inspected == null) return;
+            string text;
+            if (bc.Inspected is Tower t)
+            {
+                var s = t.Stats;
+                string dps = $"{s.Damage / s.FireInterval:0.#} damage/s";
+                text = $"<b>{t.Def.Name}</b>\n{dps} · range {s.Range:0.#} m · every {s.FireInterval:0.00}s" +
+                       (s.Splash > 0 ? $" · splash {s.Splash:0.#} m" : "") +
+                       "\n<color=#bbb>F move · X remove</color>";
+            }
+            else if (bc.Inspected is Barricade b)
+                text = $"<b>Barricade</b>\n{b.MaxHealth:0} health\n<color=#bbb>F move · X remove</color>";
+            else return;
+            var rect = new Rect(Screen.width / 2f + S(30), Screen.height / 2f + S(20), S(320), S(76));
+            Box(rect, Panel);
+            GUI.Label(new Rect(rect.x + S(12), rect.y + S(8), rect.width - S(24), rect.height), text, small);
         }
 
         void DrawCurrency(GameManager gm)

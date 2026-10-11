@@ -18,6 +18,27 @@ namespace OrcHordeFps
         const float BeamHeight = 1.1f;
 
         public TowerDef Def { get; private set; }
+        /// <summary>The tower-ground cell it stands on, for saving the layout.</summary>
+        public Vector2Int Cell { get; set; }
+
+        LineRenderer rangeRing;
+
+        /// <summary>Shows or hides this tower's reach on the ground, drawn at its current upgraded range.</summary>
+        public void ShowRange(bool show)
+        {
+            if (rangeRing == null)
+            {
+                if (!show) return;
+                var go = new GameObject("Range");
+                go.transform.SetParent(transform, false);
+                var c = Def.Color;
+                c.a = 0.35f;
+                rangeRing = Fx.NewLine(go.transform, c, 0.05f);
+                rangeRing.enabled = false;
+            }
+            if (show && !rangeRing.enabled) Fx.SetCircle(rangeRing, transform.position + Vector3.up * 0.06f, Stats.Range, 64);
+            rangeRing.enabled = show;
+        }
         /// <summary>This tower's numbers with the skill tree applied.</summary>
         public TowerStats Stats => Progression.Tower(Def);
 

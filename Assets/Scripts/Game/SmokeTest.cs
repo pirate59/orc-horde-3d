@@ -43,6 +43,8 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
+        static bool buildTest;
+        static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
 
@@ -56,6 +58,11 @@ namespace OrcHordeFps
                 for (int i = 0; i < args.Length - 1; i++)
                 {
                     if (args[i] == "-smoketest") outDir = args[i + 1];
+                    if (args[i] == "-smokebuild")
+                    {
+                        buildTest = true;
+                        queue = new Queue<string>(new[] { args[i + 1] });
+                    }
                     if (args[i] == "-smokemaps")
                         queue = new Queue<string>(args[i + 1] == "all"
                             ? System.Array.ConvertAll(catalog.maps, m => m.id)
@@ -88,6 +95,16 @@ namespace OrcHordeFps
         IEnumerator Start()
         {
             yield return null;
+            if (buildTest)
+            {
+                // Never let a broken scenario hold the process open.
+                Invoke(nameof(GiveUp), 60f);
+                yield return BuildScenario();
+                if (buildStage == 1) { Session.Play(GameManager.I.Map.id); yield break; }
+                Log("done");
+                Application.Quit();
+                yield break;
+            }
             yield return campaign ? Campaign() : Tour();
 
             queue?.Dequeue();
@@ -296,6 +313,124 @@ namespace OrcHordeFps
             }
         }
 
+        /// <summary>
+        /// The build phase through its own API, from the tactical view: towers on
+        /// the tower ground by the path, a barricade line across the first route,
+        /// spots that must be refused, then a reload to check the layout comes back.
+        /// </summary>
+        IEnumerator BuildScenario()
+        {
+            var gm = GameManager.I;
+            var pc = PlayerController.I;
+            var map = gm.Map;
+
+            if (buildStage == 1)
+            {
+                yield return new WaitForSecondsRealtime(0.5f);
+                bool ok = Tower.All.Count == expectTowers && Barricade.All.Count == expectWalls;
+                Log($"build: after reload {Tower.All.Count}/{expectTowers} towers, {Barricade.All.Count}/{expectWalls} barricades restored -> {(ok ? "PASS" : "FAIL")}");
+                Log($"build: routes {Routes()}");
+                pc.SetTactical(false);
+                yield return null;
+                Shot($"{map.id}-build-onfoot");
+
+                // Then fight it, to see the horde deal with the line: around it, or through it.
+                CancelInvoke(nameof(GiveUp));
+                Invoke(nameof(GiveUp), 150f);
+                float t = 0;
+                yield return PlayRound(gm, TourSpeed, false, s => t = s);
+                int standing = 0;
+                foreach (var b in Barricade.All) if (b.Standing) standing++;
+                Log($"build: fought round 1 -> {gm.Phase} base={gm.BaseHealth}/{gm.MaxBaseHealth} kills={gm.Kills} alive={Enemy.All.Count} " +
+                    $"barricades standing {standing}/{Barricade.All.Count} stranded={Enemy.Stranded} real={t:0}s");
+                if (gm.Phase == Phase.Combat) LogStall(gm);
+                buildStage = 2;
+                yield break;
+            }
+
+            BuildController.ClearLayout();
+            pc.SetTactical(true);
+            pc.FocusTactical(map.Base, 60f);
+            yield return new WaitForSecondsRealtime(0.6f);
+            Log($"build: tactical={pc.Tactical} routes before {Routes()}");
+            Shot($"{map.id}-build-empty");
+
+            // Towers through the API, on tower ground beside the path near the base.
+            var grid = gm.Grid;
+            var cells = new List<Vector2Int>();
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+                if (grid.Kind(c, r) == HexGrid.TowerGround)
+                    for (int s = 0; s < 6; s++)
+                        if (HexGrid.IsPath(grid.Kind(HexGrid.Across(c, r, s)))) { cells.Add(new Vector2Int(c, r)); break; }
+            cells.Sort((a, b) => (grid.Center(a) - map.Base).sqrMagnitude.CompareTo((grid.Center(b) - map.Base).sqrMagnitude));
+            int towers = 0;
+            for (int i = 2; i < cells.Count && towers < 6; i += 3)
+                if (BuildController.PlaceTower(Towers.MachineGun, cells[i]) != null) towers++;
+
+            // Refusals: a tower on the path, a second tower on a taken cell, a barricade on tower ground.
+            var pathCell = grid.CellAt(map.Base + (map.Base - map.World(map.spawns[0].x, map.spawns[0].y)).normalized * -8f);
+            string onPath = BuildController.TowerProblem(Towers.MachineGun, pathCell);
+            string taken = Tower.All.Count > 0 ? BuildController.TowerProblem(Towers.MachineGun, Tower.All[0].Cell) : "n/a";
+            string wallOnGround = BuildController.BarricadeProblem(cells[0], 0, true);
+            Log($"build: refused tower-on-path=[{onPath}] tower-on-tower=[{taken}] wall-on-ground=[{wallOnGround}]");
+
+            // A barricade line across the first route, at the middle of its longest straight.
+            yield return new WaitForSecondsRealtime(0.5f);
+            int walls = 0;
+            var route = RoutePreview.I.Routes.Count > 0 ? RoutePreview.I.Routes[0] : null;
+            if (route != null)
+            {
+                var pts = route.PointsCopy();
+                int longest = 1;
+                for (int i = 2; i < pts.Count; i++)
+                    if (Vector3.Distance(pts[i - 1], pts[i]) > Vector3.Distance(pts[longest - 1], pts[longest])) longest = i;
+                var at = (pts[longest - 1] + pts[longest]) / 2;
+                var ahead = pts[longest] - pts[longest - 1];
+                ahead.y = 0;
+                var across = Vector3.Cross(Vector3.up, ahead.normalized);
+                // The grid axis that runs most nearly across the road, then barricades end to end along it.
+                int axis = 0;
+                for (int a = 1; a < HexGrid.AxisSides.Length; a++)
+                    if (Mathf.Abs(Vector3.Dot(grid.AxisDirection(a), across)) > Mathf.Abs(Vector3.Dot(grid.AxisDirection(axis), across))) axis = a;
+                var mid = grid.CellAt(at);
+                for (int k = -3; k <= 3; k++)
+                    if (BuildController.PlaceBarricade(HexGrid.Step(mid, axis, k * Walls.Barricade.Cells), axis, ignorePlayer: true) != null) walls++;
+                pc.FocusTactical(at, 30f);
+            }
+            yield return new WaitForSecondsRealtime(1.2f);
+            Log($"build: placed {towers} towers, {walls} barricades; routes after {Routes()}");
+            Shot($"{map.id}-build-line");
+
+            expectTowers = Tower.All.Count;
+            expectWalls = Barricade.All.Count;
+            buildStage = 1;
+        }
+
+        void GiveUp()
+        {
+            Log("build: TIMED OUT");
+            Application.Quit();
+        }
+
+        static string Routes()
+        {
+            var parts = new List<string>();
+            foreach (var r in RoutePreview.I.Routes) parts.Add($"{r.Gate.name}:{r.Length:0}m{(r.Sealed ? ":SEALED" : "")}");
+            return string.Join(" ", parts);
+        }
+
+        static Vector3 PointAlong(List<Vector3> pts, float distance)
+        {
+            for (int i = 1; i < pts.Count; i++)
+            {
+                float seg = Vector3.Distance(pts[i - 1], pts[i]);
+                if (distance <= seg) return Vector3.Lerp(pts[i - 1], pts[i], seg > 0 ? distance / seg : 0);
+                distance -= seg;
+            }
+            return pts[pts.Count - 1];
+        }
+
         /// <summary>When a round runs out of real time, what the orcs still alive are doing, and where.</summary>
         static void LogStall(GameManager gm)
         {
@@ -331,7 +466,7 @@ namespace OrcHordeFps
         /// </summary>
         static int PlaceLayout(GameManager gm)
         {
-            foreach (var t in Tower.All.ToArray()) { Tower.All.Remove(t); Destroy(t.gameObject); }
+            BuildController.ClearLayout();
             var grid = gm.Grid;
             var cells = new List<Vector2Int>();
             for (int c = 0; c < grid.Columns; c++)

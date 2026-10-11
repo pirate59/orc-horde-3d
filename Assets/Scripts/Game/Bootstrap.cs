@@ -24,6 +24,8 @@ namespace OrcHordeFps
             PlayerController.Create(start, yaw);
             gm.Init(map, grid);
             gm.gameObject.AddComponent<Hud>();
+            gm.gameObject.AddComponent<RoutePreview>();
+            Layouts.Restore(map.id);
             SmokeTest.AttachIfRequested();
         }
 

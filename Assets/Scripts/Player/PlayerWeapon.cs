@@ -62,7 +62,7 @@ namespace OrcHordeFps
             gun.localPosition = Vector3.Lerp(gun.localPosition, gunRest, 12f * Time.deltaTime);
 
             var pc = PlayerController.I;
-            bool building = BuildController.I.Tool != BuildTool.None;
+            bool building = BuildController.I.Tool != BuildTool.None || pc.Tactical;
             gun.gameObject.SetActive(!building);
             if (!pc.InputLive || building) return;
 

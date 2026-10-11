@@ -75,6 +75,31 @@ namespace OrcHordeFps
             };
         }
 
+        /// <summary>
+        /// The three straight lines through a cell's neighbours: north-south,
+        /// north-east to south-west, north-west to south-east. A barricade runs
+        /// along one of them, as in Orc Horde. Each is given by one of its two
+        /// opposite sides.
+        /// </summary>
+        public static readonly int[] AxisSides = { 1, 0, 2 };
+
+        /// <summary>The cell <paramref name="steps"/> cells from this one along an axis; negative steps go the other way.</summary>
+        public static Vector2Int Step(Vector2Int cell, int axis, int steps)
+        {
+            int side = steps >= 0 ? AxisSides[axis] : (AxisSides[axis] + 3) % 6;
+            for (int i = 0; i < Mathf.Abs(steps); i++) cell = Across(cell.x, cell.y, side);
+            return cell;
+        }
+
+        /// <summary>World-space unit vector along an axis, in its positive direction.</summary>
+        public Vector3 AxisDirection(int axis)
+        {
+            var from = new Vector2Int(2, 2);
+            var d = Center(Step(from, axis, 1)) - Center(from);
+            d.y = 0;
+            return d.normalized;
+        }
+
         /// <summary>The neighbour across the side from corner <paramref name="side"/> to the next, matching <see cref="CornerOffsets"/>.</summary>
         public static Vector2Int Across(int column, int row, int side)
         {
