@@ -293,7 +293,7 @@ namespace OrcHordeFps
             var round = gm.Round;
             var lines = new System.Text.StringBuilder();
             lines.Append($"<b>NEXT WAVE</b>  <color=#bbb>{round.Duration:0}s · base {gm.MaxBaseHealth}</color>\n");
-            float tough = GameManager.ToughnessFor(round.pressureBudget);
+            float tough = gm.RoundToughness;
             if (tough > 1.01f) lines.Append($"<color=#ff8a8a>Orcs have ×{tough:0.0} health</color>\n");
 
             lines.Append("\n<b>Gates</b>\n");
@@ -324,7 +324,7 @@ namespace OrcHordeFps
                 lines.Append($"<color=#{ColorUtility.ToHtmlStringRGB(def.Color)}>■</color> {def.Name}  <color=#bbb>{kv.Value / total:P0}</color>\n");
             }
             if (pressure > 0)
-                lines.Append($"<color=#bbb>about {GameManager.FieldedBudget(round.pressureBudget) / (pressure / total):0} orcs</color>\n");
+                lines.Append($"<color=#bbb>about {gm.RoundBudget / (pressure / total):0} orcs</color>\n");
 
             if (round.bosses.Length > 0 || round.guaranteed.Length > 0)
             {

@@ -22,8 +22,11 @@ namespace OrcHordeFps
         /// Here a round's budget is <see cref="HordeScale"/> of the original at
         /// Quarry Road's opener. It grows as the <see cref="EarlyGrowth"/> power of
         /// the original through the first two maps, where the player has few
-        /// towers and the rifle carries more of the fight, then in step with Orc
-        /// Horde's own budgets from <see cref="Knee"/> (Horseshoe Basin's opener) on.
+        /// towers and the rifle carries more of the fight.
+        ///
+        /// From Horseshoe Basin on, <see cref="Difficulty"/> sets each round's
+        /// pressure from the player's expected firepower instead. Past that map
+        /// this curve applies only to maps outside the campaign.
         /// </summary>
         public const float HordeScale = 0.12f, EarlyGrowth = 0.85f;
         /// <summary>The budget the scale is pinned to: Quarry Road's first round.</summary>
@@ -38,28 +41,31 @@ namespace OrcHordeFps
         /// </summary>
         public const float BodyBudget = 800f;
 
-        /// <summary>The pressure this game fields for one of Orc Horde's budgets, before it is split into bodies and toughness.</summary>
+        /// <summary>The pressure this game fields for one of Orc Horde's budgets, on maps <see cref="Difficulty"/> leaves to the original curve.</summary>
         public static float FieldedPressure(float original)
         {
             float Early(float b) => HordeScale * ReferenceBudget * Mathf.Pow(Mathf.Max(b, 1f) / ReferenceBudget, EarlyGrowth);
             return original <= Knee ? Early(original) : Early(Knee) * original / Knee;
         }
 
+        /// <summary>This round's pressure, before it is split into bodies and toughness.</summary>
+        public float RoundPressure => Difficulty.Pressure(Map, RoundIndex);
+
         /// <summary>Health multiplier on the budget-drawn orcs of a round whose pressure outruns <see cref="BodyBudget"/>. Bosses and other set pieces are outside the budget and keep their own health.</summary>
-        public static float ToughnessFor(float original) => Mathf.Max(1f, FieldedPressure(original) / BodyBudget);
+        public float RoundToughness => Mathf.Max(1f, RoundPressure / BodyBudget);
 
         /// <summary>The pressure spent on bodies: what spawns.</summary>
-        public static float FieldedBudget(float original) => FieldedPressure(original) / ToughnessFor(original);
+        public float RoundBudget => RoundPressure / RoundToughness;
 
         /// <summary>This round's toughness. Fixed for the round, so reinforcements match the horde they join.</summary>
-        public float Toughness => Phase == Phase.Build ? 1f : ToughnessFor(Round.pressureBudget);
+        public float Toughness => Phase == Phase.Build ? 1f : RoundToughness;
 
         /// <summary>
         /// What each orc pays relative to its Orc Horde reward: the original budget
         /// over the spawned one, so a round pays what the full horde would have
         /// and the skill tree's prices keep their pacing.
         /// </summary>
-        public float RewardScale => Round.pressureBudget / FieldedBudget(Round.pressureBudget);
+        public float RewardScale => Round.pressureBudget / RoundBudget;
         const int MaxAlive = 110;
         /// <summary>Spawning stops short of the round's end so its tail can arrive.</summary>
         const float SpawnWindowFraction = 0.85f;
@@ -123,7 +129,7 @@ namespace OrcHordeFps
             ClearHorde();
             foreach (var b in Barricade.All) b.Restore();
             PlayerHealth.I?.Revive();
-            float tough = ToughnessFor(Round.pressureBudget);
+            float tough = RoundToughness;
             string toughNote = tough > 1.01f ? $"  ·  orcs have ×{tough:0.0} health" : "";
             Announce($"Round {RoundIndex + 1}: {Round.name}{toughNote}  —  build your line, press G to start", Color.white, 6f);
         }
@@ -136,7 +142,7 @@ namespace OrcHordeFps
             LastReward = null;
             Kills = 0;
             RoundTime = 0;
-            budget = FieldedBudget(Round.pressureBudget);
+            budget = RoundBudget;
             spent = pool = 0;
             nextSegment = 0;
             spentByType.Clear();
