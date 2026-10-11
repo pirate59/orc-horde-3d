@@ -23,6 +23,8 @@ namespace OrcHordeFps
         {
             public MapLink Data;
             public Vector3 Entry, Exit, Direction;
+            /// <summary>Half the link's usable width: how far across it an orc may keep its place.</summary>
+            public float HalfWidth;
             public bool Tunnel => Data.IsTunnel;
         }
 
@@ -122,7 +124,7 @@ namespace OrcHordeFps
                 var instance = NavMesh.AddLink(data);
                 if (!NavMesh.IsLinkValid(instance)) { Debug.LogWarning($"[Links] {link.id}: navmesh refused the link"); continue; }
                 instances.Add(instance);
-                All.Add(new Info { Data = link, Entry = entry, Exit = exit, Direction = dir });
+                All.Add(new Info { Data = link, Entry = entry, Exit = exit, Direction = dir, HalfWidth = data.width / 2 });
             }
         }
 

@@ -65,7 +65,8 @@ namespace OrcHordeFps
             string phase = gm.Phase switch
             {
                 Phase.Build => "<color=#5effc4>BUILD</color>",
-                Phase.Combat => $"<color=#ffb347>FIGHT</color>  {Mathf.Max(0, gm.Round.Duration - gm.RoundTime):0}s",
+                Phase.Combat => $"<color=#ffb347>FIGHT</color>  {Mathf.Max(0, gm.Round.Duration - gm.RoundTime):0}s" +
+                    (gm.Toughness > 1.01f ? $"  <color=#ff8a8a>horde ×{gm.Toughness:0.0} health</color>" : ""),
                 Phase.Won => "<color=#5effc4>ROUND WON</color>",
                 Phase.Lost => "<color=#ff4a4a>ROUND LOST</color>",
                 _ => "<color=#5effc4>MAP HELD</color>",
@@ -197,12 +198,12 @@ namespace OrcHordeFps
             foreach (var e in Enemy.All)
             {
                 bool always = e.Def.ShowsHealthBar;
-                if (!always && e.Health >= e.Def.MaxHealth) continue;
+                if (!always && e.Health >= e.MaxHealth) continue;
                 var p = cam.WorldToScreenPoint(e.transform.position + Vector3.up * (e.Def.Height + 0.3f));
                 if (p.z <= 0 || p.z > (always ? 80f : 25f)) continue;
                 float w = always ? S(90) : S(36);
                 var r = new Rect(p.x - w / 2, Screen.height - p.y, w, always ? S(9) : S(5));
-                Bar(r, e.Health / e.Def.MaxHealth, always ? Red : Amber);
+                Bar(r, e.Health / e.MaxHealth, always ? Red : Amber);
                 if (always) GUI.Label(new Rect(r.x - S(30), r.y - S(22), r.width + S(60), S(22)), e.Def.Name, new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
             }
         }
@@ -316,11 +317,14 @@ namespace OrcHordeFps
                 string detail = next == null ? "<color=#5effc4>Complete</color>"
                     : ready ? $"<color=#ccc>{next.label}: {next.description}</color>"
                     : $"<color=#888>Needs {Needs(n)}</color>";
-                GUI.Label(new Rect(row.x + S(10), row.y + S(26), row.width - S(200), S(24)), detail, small);
+                GUI.Label(new Rect(row.x + S(10), row.y + S(26), row.width - S(270), S(24)), detail, small);
                 if (next == null) continue;
                 GUI.enabled = Progression.CanBuy(n);
                 if (GUI.Button(new Rect(row.xMax - S(170), row.y + S(8), S(160), rowH - S(20)), $"Buy · {next.cost:N0}", btn))
                     Progression.Buy(n);
+                // Masteries run to forty levels, so they can be bought five at a time, as in Orc Horde.
+                if (n.mastery && GUI.Button(new Rect(row.xMax - S(250), row.y + S(8), S(72), rowH - S(20)), "×5", btn))
+                    Progression.Buy(n, 5);
                 GUI.enabled = true;
             }
             GUI.EndScrollView();

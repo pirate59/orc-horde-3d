@@ -24,6 +24,10 @@ namespace OrcHordeFps
 
         public EnemyDef Def { get; private set; }
         public float Health { get; private set; }
+        /// <summary>The definition's health times the round's toughness, fixed at spawn.</summary>
+        public float MaxHealth { get; private set; }
+        /// <summary>The round's toughness when this orc spawned; heals scale with it too.</summary>
+        public float Toughness { get; private set; } = 1f;
         public bool Alive => Health > 0f;
         public Vector3 AimPoint => transform.position + Vector3.up * Def.Height * 0.5f;
         public Vector3 Velocity => agent.velocity;
@@ -31,6 +35,11 @@ namespace OrcHordeFps
         public bool Targetable { get; private set; } = true;
         /// <summary>Crossings made by every orc this session, for the smoke test.</summary>
         public static int LinkCrossings;
+        /// <summary>Orcs removed for being stranded with no way to the base, for the smoke test.</summary>
+        public static int Stranded;
+
+        /// <summary>How long an orc may stand still with no route to the base and no wall to break before it is removed.</summary>
+        const float StrandedSeconds = 10f;
 
         /// <summary>Path left to the base, for "first" targeting. Smaller is further along.</summary>
         public float Remaining =>
@@ -53,11 +62,15 @@ namespace OrcHordeFps
         Vector3 crossFrom, crossTo;
         float crossDistance, crossTravelled;
 
+        float stuckSince = -1f;
+
         // Boss state.
         float lastHurt, nextCharge, chargeEnds, windupEnds, pausedUntil;
         int summonsDone;
 
-        public static Enemy Spawn(EnemyDef def, Vector3 near, float scatter = 3f)
+        /// <param name="toughness">Health multiplier. Only orcs drawn from the round's budget carry the round's;
+        /// set pieces (bosses, guaranteed arrivals, escorts) are fixed in Orc Horde and stay at 1.</param>
+        public static Enemy Spawn(EnemyDef def, Vector3 near, float scatter = 3f, float toughness = 1f)
         {
             var p = near + new Vector3(Random.Range(-scatter, scatter), 0, Random.Range(-scatter, scatter));
             if (!NavMesh.SamplePosition(p, out var hit, 6f, NavMesh.AllAreas)) return null;
@@ -65,14 +78,15 @@ namespace OrcHordeFps
             var go = new GameObject(def.Name);
             go.transform.position = hit.position;
             var e = go.AddComponent<Enemy>();
-            e.Init(def);
+            e.Init(def, toughness);
             return e;
         }
 
-        void Init(EnemyDef def)
+        void Init(EnemyDef def, float toughness)
         {
             Def = def;
-            Health = def.MaxHealth;
+            Toughness = toughness;
+            MaxHealth = Health = def.MaxHealth * Toughness;
             BuildBody();
 
             agent = gameObject.AddComponent<NavMeshAgent>();
@@ -175,7 +189,7 @@ namespace OrcHordeFps
             return dealt;
         }
 
-        public void Heal(float amount) => Health = Mathf.Min(Def.MaxHealth, Health + amount);
+        public void Heal(float amount) => Health = Mathf.Min(MaxHealth, Health + amount);
 
         public void Die(bool killed)
         {
@@ -186,7 +200,7 @@ namespace OrcHordeFps
                 GameManager.I.OnKilled(this);
                 Fx.Burst(AimPoint, Def.Radius * 3f + 0.4f, Def.Color * 0.8f, 0.4f);
                 if (Def.SplitInto != null)
-                    for (int i = 0; i < Def.SplitCount; i++) Spawn(Def.SplitInto, transform.position, 1.2f);
+                    for (int i = 0; i < Def.SplitCount; i++) Spawn(Def.SplitInto, transform.position, 1.2f, Toughness);
             }
             Destroy(gameObject);
         }
@@ -216,7 +230,7 @@ namespace OrcHordeFps
                 nextHeal = Time.time + Def.HealInterval;
                 foreach (var other in All)
                     if ((other.transform.position - transform.position).sqrMagnitude < Def.HealRadius * Def.HealRadius)
-                        other.Heal(Def.HealPerPulse);
+                        other.Heal(Def.HealPerPulse * Toughness);
                 Fx.Ring(transform.position + Vector3.up * 0.2f, Def.HealRadius, U.Hex(0x4fbf7a), 0.5f);
             }
 
@@ -237,6 +251,11 @@ namespace OrcHordeFps
         /// Crosses a bridge or tunnel under its own control: straight across the
         /// span keeping its place across the width, up onto the deck or out of
         /// sight in the rock, then back onto the navmesh on the far side.
+        ///
+        /// The link is let go the moment the orc steps on: navmesh links carry one
+        /// agent at a time, and holding it for the whole crossing would queue the
+        /// horde behind it one orc every few seconds. The agent stands still,
+        /// detached from the transform, while the body is carried across.
         /// </summary>
         void Cross()
         {
@@ -245,14 +264,22 @@ namespace OrcHordeFps
                 crossing = Links.Nearest(transform.position);
                 if (crossing == null) { agent.CompleteOffMeshLink(); return; }
                 var across = Vector3.Cross(Vector3.up, crossing.Direction);
-                float offset = Vector3.Dot(transform.position - crossing.Entry, across);
+                float offset = Mathf.Clamp(Vector3.Dot(transform.position - crossing.Entry, across), -crossing.HalfWidth, crossing.HalfWidth);
                 crossFrom = transform.position;
-                crossTo = crossing.Exit + across * offset;
-                if (NavMesh.SamplePosition(crossTo, out var hit, 2f, NavMesh.AllAreas)) crossTo = hit.position;
+                crossTo = crossing.Exit;
+                // Keep its place across the width only where that lands on the road the exit opens onto:
+                // a clear navmesh line back to the exit rules out the tower ground beside it.
+                if (NavMesh.SamplePosition(crossing.Exit + across * offset, out var hit, 1f, NavMesh.AllAreas) &&
+                    !NavMesh.Raycast(crossing.Exit, hit.position, out _, NavMesh.AllAreas))
+                    crossTo = hit.position;
                 crossDistance = Vector3.Distance(crossFrom, crossTo);
                 crossTravelled = 0;
                 if (crossing.Tunnel) SetTargetable(false);
                 LinkCrossings++;
+                crossCount++;
+                if (agent.isOnOffMeshLink) agent.CompleteOffMeshLink();
+                agent.isStopped = true;
+                agent.updatePosition = false;
             }
 
             float slow = Time.time < slowUntil ? slowFactor : 1f;
@@ -268,8 +295,9 @@ namespace OrcHordeFps
 
             if (crossing.Tunnel) SetTargetable(true);
             crossing = null;
-            if (agent.isOnOffMeshLink) agent.CompleteOffMeshLink();
             agent.Warp(crossTo);
+            agent.updatePosition = true;
+            agent.isStopped = false;
             agent.SetDestination(GameManager.I.Map.Base);
         }
 
@@ -283,7 +311,7 @@ namespace OrcHordeFps
         float BossSpeed()
         {
             float m = 1f;
-            if (Def.EnrageThreshold > 0 && Health <= Def.MaxHealth * Def.EnrageThreshold) m *= Def.EnrageSpeedMultiplier;
+            if (Def.EnrageThreshold > 0 && Health <= MaxHealth * Def.EnrageThreshold) m *= Def.EnrageSpeedMultiplier;
             if (Time.time < chargeEnds && Time.time >= windupEnds) m *= Def.ChargeSpeedMultiplier;
             return m;
         }
@@ -292,10 +320,10 @@ namespace OrcHordeFps
         bool Boss()
         {
             if (Def.RegenPerSecond > 0 && Time.time - lastHurt > Def.RegenIdle)
-                Heal(Def.RegenPerSecond * Time.deltaTime);
+                Heal(Def.RegenPerSecond * Toughness * Time.deltaTime);
 
             if (Def.SummonThresholds != null && summonsDone < Def.SummonThresholds.Length &&
-                Health <= Def.MaxHealth * Def.SummonThresholds[summonsDone])
+                Health <= MaxHealth * Def.SummonThresholds[summonsDone])
             {
                 summonsDone++;
                 pausedUntil = Time.time + Def.SummonPause;
@@ -329,6 +357,24 @@ namespace OrcHordeFps
             return hold;
         }
 
+        /// <summary>A one-word account of what this orc is doing, for the smoke test's stall report.</summary>
+        public string DebugState =>
+            crossing != null ? (crossing.Tunnel ? "tunnel" : "bridge")
+            : !agent.isOnNavMesh ? "offmesh"
+            : agent.isOnOffMeshLink ? "onlink"
+            : wallTarget != null ? "wall"
+            : agent.isStopped ? "stopped"
+            : agent.pathPending ? "pathing"
+            : agent.pathStatus != NavMeshPathStatus.PathComplete ? "partial"
+            : agent.velocity.sqrMagnitude < 0.04f ? "idle"
+            : "moving";
+
+        public string DebugDetail =>
+            $"{Def.Id} pos={transform.position:F1} agent={agent.nextPosition:F1} onMesh={agent.isOnNavMesh} " +
+            $"status={agent.pathStatus} corners={agent.path.corners.Length} vel={agent.velocity.magnitude:F2} " +
+            $"targetable={Targetable} crossings={crossCount}";
+        int crossCount;
+
         bool RoadSealed => !agent.pathPending && agent.pathStatus != NavMeshPathStatus.PathComplete;
 
         void Think()
@@ -348,6 +394,20 @@ namespace OrcHordeFps
                 // A partial path ends at the wall in the way, so look a little past the usual distance.
                 if (sealedRoad) reach = Mathf.Max(reach, 6f);
                 if (wants) wallTarget = Barricade.Nearest(transform.position, reach);
+            }
+
+            // A failsafe, not a behaviour: an orc cut off from the base with nothing to attack would
+            // otherwise hold its round open forever. It is removed without paying or breaching. Judged
+            // before re-pathing below, which would leave the path pending and hide the answer.
+            bool stranded = wallTarget == null && RoadSealed && agent.velocity.sqrMagnitude < 0.04f;
+            if (!stranded) stuckSince = -1f;
+            else if (stuckSince < 0f) stuckSince = Time.time;
+            else if (Time.time - stuckSince > StrandedSeconds)
+            {
+                Stranded++;
+                Debug.LogWarning($"[Enemy] {Def.Name} stranded at {transform.position}, removed");
+                Die(killed: false);
+                return;
             }
 
             if (wallTarget == null) agent.SetDestination(GameManager.I.Map.Base);

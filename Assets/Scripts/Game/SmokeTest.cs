@@ -12,19 +12,34 @@ namespace OrcHordeFps
     /// layout, photographs the map from above and the fight from the player, and
     /// plays the first round at speed.
     ///
-    /// <c>-smoketest &lt;dir&gt; -smokecampaign &lt;maps&gt;</c> plays the campaign from a fresh
-    /// save as a towers-only player would: every round in order, spending all
+    /// <c>-smoketest &lt;dir&gt; -smokecampaign &lt;maps&gt; [-smokefrom &lt;map&gt;]</c> plays the
+    /// campaign from a fresh save (or, with -smokefrom, from the test save where
+    /// an earlier run left it) as a towers-only player would: every round in order, spending all
     /// its currency between rounds and retrying a lost round a few times, since
     /// losses pay too. No one shoots, so it is a floor on what a player can do.
     /// </summary>
     public sealed class SmokeTest : MonoBehaviour
     {
-        const float TourSpeed = 4f, CampaignSpeed = 6f, RealSecondsPerRound = 60f;
-        const int MaxAttempts = 4;
+        const float TourSpeed = 4f, CampaignSpeed = 6f, RealSecondsPerRound = 120f;
+        const int MaxAttempts = 6;
         /// <summary>The bot gunner: a modest shot, not an aimbot.</summary>
         const float BotAccuracy = 0.55f, BotHeadshotShare = 0.3f, BotSightRange = 45f;
 
         static Queue<string> queue;
+        static readonly List<float> frameMs = new List<float>();
+        static int peakAlive;
+
+        /// <summary>Mean and 95th-percentile real frame time over the last round, with the most orcs alive at once.</summary>
+        static string Perf()
+        {
+            if (frameMs.Count == 0) return "";
+            var sorted = new List<float>(frameMs);
+            sorted.Sort();
+            float mean = 0;
+            foreach (var f in sorted) mean += f;
+            mean /= sorted.Count;
+            return $"frame={mean:0.0}/{sorted[(int)(sorted.Count * 0.95f)]:0.0}ms peak={peakAlive}";
+        }
         static string outDir;
         static bool campaign;
         static int campaignMaps;
@@ -50,9 +65,15 @@ namespace OrcHordeFps
                     {
                         campaign = true;
                         campaignMaps = int.Parse(args[i + 1]);
-                        queue = new Queue<string>(catalog.campaign);
-                        Progression.Reset();
-                        Session.ResetUnlocks();
+                        // -smokefrom picks up the test save where an earlier run left it, at the named map.
+                        int from = System.Array.IndexOf(args, "-smokefrom");
+                        int start = from >= 0 && from + 1 < args.Length ? System.Array.IndexOf(catalog.campaign, args[from + 1]) : -1;
+                        queue = new Queue<string>(System.Array.FindAll(catalog.campaign, id => catalog.CampaignIndex(id) >= Mathf.Max(start, 0)));
+                        if (start < 0)
+                        {
+                            Progression.Reset();
+                            Session.ResetUnlocks();
+                        }
                     }
                 }
                 if (System.Array.IndexOf(args, "-smokenogun") >= 0) gunner = false;
@@ -111,8 +132,9 @@ namespace OrcHordeFps
                     var reward = gm.LastReward;
                     Log($"{map.id,-18} r{gm.RoundIndex + 1} try{attempt} {(won ? "WON " : gm.Phase == Phase.Lost ? "lost" : "TIME")} " +
                         $"base={gm.BaseHealth}/{gm.MaxBaseHealth} kills={gm.Kills} earned={(reward?.Total ?? 0),6} " +
-                        $"bank={Progression.Currency,6} bought={bought,2} towers={placed,2} skills={SkillLevels(),3} real={t:0}s" +
+                        $"bank={Progression.Currency,8} bought={bought,2} towers={placed,2} skills={SkillLevels(),3} tough=x{gm.Toughness:0.0} {Perf()} stranded={Enemy.Stranded} real={t:0}s" +
                         (gm.Phase == Phase.Lost ? $"  [{gm.LastLossReason}]" : ""));
+                    if (gm.Phase == Phase.Combat) LogStall(gm);
                     if (won) break;
                     if (attempt >= MaxAttempts || gm.Phase == Phase.Combat) { Log($"stuck on {map.id} round {gm.RoundIndex + 1}"); yield break; }
                     gm.Continue(); // back to build for a retry
@@ -134,9 +156,13 @@ namespace OrcHordeFps
             float t = 0;
             bool shot = !photograph;
             var bot = campaign && gunner ? new BotGunner() : null;
+            frameMs.Clear();
+            peakAlive = 0;
             while (gm.Phase == Phase.Combat && t < RealSecondsPerRound)
             {
                 t += Time.unscaledDeltaTime;
+                frameMs.Add(Time.unscaledDeltaTime * 1000f);
+                peakAlive = Mathf.Max(peakAlive, Enemy.All.Count);
                 bot?.Tick();
                 if (!shot && Enemy.All.Count > 0)
                 {
@@ -169,6 +195,8 @@ namespace OrcHordeFps
         /// reloads, and drops the Mortar and Bombing Run on the thickest crowd.
         /// A boss in sight takes priority for both, as a player soon learns: armour
         /// shrugs off tower fire, and a headshot is the hardest hit in the game.
+        /// Against a shielded boss it flanks: its shots come from the boss's side,
+        /// as a player stepping off the road to get round the shield would.
         /// Shots go through the same damage path as the player's own.
         /// </summary>
         sealed class BotGunner
@@ -191,7 +219,8 @@ namespace OrcHordeFps
                     ammo--;
                     var look = target.AimPoint - eye;
                     player.transform.rotation = Quaternion.LookRotation(new Vector3(look.x, 0, look.z));
-                    if (Random.value < BotAccuracy) target.TakeDamage(PlayerWeapon.Damage * Progression.RifleDamage, Random.value < BotHeadshotShare, eye);
+                    var from = target.Def.ShieldArcDegrees > 0 ? target.transform.position + target.transform.right * 6f : eye;
+                    if (Random.value < BotAccuracy) target.TakeDamage(PlayerWeapon.Damage * Progression.RifleDamage, Random.value < BotHeadshotShare, from);
                 }
 
                 if (Time.time < nextThink) return;
@@ -265,6 +294,27 @@ namespace OrcHordeFps
                 if (best == null || !Progression.Buy(best)) return bought;
                 bought++;
             }
+        }
+
+        /// <summary>When a round runs out of real time, what the orcs still alive are doing, and where.</summary>
+        static void LogStall(GameManager gm)
+        {
+            var states = new Dictionary<string, int>();
+            var places = new Dictionary<Vector2Int, int>();
+            foreach (var e in Enemy.All)
+            {
+                states[e.DebugState] = states.TryGetValue(e.DebugState, out var n) ? n + 1 : 1;
+                var p = e.transform.position;
+                var key = new Vector2Int(Mathf.RoundToInt(p.x / 5) * 5, Mathf.RoundToInt(p.z / 5) * 5);
+                places[key] = places.TryGetValue(key, out var m) ? m + 1 : 1;
+            }
+            var top = new List<KeyValuePair<Vector2Int, int>>(places);
+            top.Sort((a, b) => b.Value.CompareTo(a.Value));
+            string where = string.Join(" ", top.GetRange(0, Mathf.Min(5, top.Count)).ConvertAll(kv => $"({kv.Key.x},{kv.Key.y})x{kv.Value}"));
+            string links = string.Join(" ", Links.All.ConvertAll(l => $"{l.Data.id}:entry({l.Entry.x:0},{l.Entry.z:0})->exit({l.Exit.x:0},{l.Exit.z:0})"));
+            Log($"  stall: {string.Join(" ", new List<string>(System.Linq.Enumerable.Select(states, kv => kv.Key + "=" + kv.Value)))} | at {where} | {links}");
+            for (int i = 0; i < Mathf.Min(4, Enemy.All.Count); i++) Log("    " + Enemy.All[i].DebugDetail);
+            Shot($"{gm.Map.id}-stall");
         }
 
         static int SkillLevels()

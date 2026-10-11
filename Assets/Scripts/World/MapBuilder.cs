@@ -29,11 +29,12 @@ namespace OrcHordeFps
             if (map.biome == "snow") groundColor = Color.Lerp(rockColor, U.Hex(0xdfe6ee), 0.6f);
             if (map.biome == "grassland") groundColor = Color.Lerp(rockColor, U.Hex(0x7d9a5a), 0.5f);
 
-            // One slab under everything: the floor the horde walks and the navmesh is baked from.
-            var floor = Shapes.Prim(PrimitiveType.Cube, root, new Vector3(map.Width / 2, -0.25f, map.Depth / 2),
+            // A backstop under everything, just below ground and on a layer the navmesh bake ignores.
+            // The walkable floor is the path hexes alone: a slab at ground level would also run on under
+            // every rock column, which is open underneath, and the bake would find floor in there.
+            var floor = Shapes.Prim(PrimitiveType.Cube, root, new Vector3(map.Width / 2, -0.55f, map.Depth / 2),
                 new Vector3(map.Width + 40, 0.5f, map.Depth + 40), Mats.Lit(floorColor * 0.8f), collider: true);
-            floor.name = "Floor";
-            floor.layer = Layers.Road;
+            floor.name = "Backstop";
 
             var terrain = Mats.VertexLit();
             var edgeMat = Mats.Lit(U.Hex(0x3ec9e0), 1.2f);
@@ -60,7 +61,7 @@ namespace OrcHordeFps
                     {
                         var tint = floorColor * (0.92f + noise * 0.16f);
                         tint.a = 1;
-                        path.AddTop(center + Vector3.up * 0.005f, corners, tint);
+                        path.AddTop(center, corners, tint);
                         continue;
                     }
 
@@ -86,7 +87,7 @@ namespace OrcHordeFps
 
                 rock.Emit(root, "Rock", terrain, Layers.Rock, collider: true);
                 ground.Emit(root, "Tower ground", terrain, Layers.BuildGround, collider: true);
-                path.Emit(root, "Path", terrain, -1, collider: false);
+                path.Emit(root, "Path", terrain, Layers.Road, collider: true);
                 edges.Emit(root, "Build edge", edgeMat, -1, collider: false);
             }
 

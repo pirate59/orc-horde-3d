@@ -56,7 +56,8 @@ namespace OrcHordeFps
     /// Kills pay currency win or lose; a win adds a completion bonus that grows
     /// through the campaign and doubles on a first clear. Currency buys skill
     /// levels: tower unlocks, capacity and stat multipliers, walls, base health
-    /// and ability upgrades. Only nodes whose every effect this game honours are
+    /// and ability upgrades, then the 40-level masteries that soak up a deep
+    /// campaign's currency. Only nodes whose every effect this game honours are
     /// offered; the rest (shields, traits, the later abilities) wait their turn.
     ///
     /// Saved in PlayerPrefs, so it survives across sessions and map changes.
@@ -200,7 +201,7 @@ namespace OrcHordeFps
                 if (offered != null) return offered;
                 var ok = new HashSet<string>();
                 foreach (var n in Tree.nodes)
-                    if (n.currency == "currency" && !n.mastery && Array.TrueForAll(n.levels, l => Array.TrueForAll(l.effects, Honoured)))
+                    if (n.currency == "currency" && Array.TrueForAll(n.levels, l => Array.TrueForAll(l.effects, Honoured)))
                         ok.Add(n.id);
                 // A node is only reachable if a whole set of its prerequisites is.
                 bool changed = true;
@@ -246,6 +247,14 @@ namespace OrcHordeFps
         {
             var next = NextLevel(n);
             return next != null && PrerequisitesMet(n) && Data.currency >= next.cost;
+        }
+
+        /// <summary>Buys up to <paramref name="levels"/> levels in a row, as far as currency reaches. Returns how many.</summary>
+        public static int Buy(SkillNode n, int levels)
+        {
+            int bought = 0;
+            while (bought < levels && Buy(n)) bought++;
+            return bought;
         }
 
         public static bool Buy(SkillNode n)

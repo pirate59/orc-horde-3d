@@ -17,22 +17,46 @@ namespace OrcHordeFps
         /// <summary>
         /// DEVIATION: Orc Horde's pressure budgets field hundreds of orcs a round,
         /// which a top-down sim can afford and a crowd of 3D agents cannot, and
-        /// grow some seventy-fold over the first four maps. Here a round's budget
-        /// is <see cref="HordeScale"/> of the original at Quarry Road's opener and
-        /// grows as its <see cref="HordeGrowth"/> power after that: the same
-        /// curve, flattened, keeping each round's mix and pacing.
+        /// grow nearly six-hundred-fold over the campaign.
+        ///
+        /// Here a round's budget is <see cref="HordeScale"/> of the original at
+        /// Quarry Road's opener. It grows as the <see cref="EarlyGrowth"/> power of
+        /// the original through the first two maps, where the player has few
+        /// towers and the rifle carries more of the fight, then in step with Orc
+        /// Horde's own budgets from <see cref="Knee"/> (Horseshoe Basin's opener) on.
         /// </summary>
-        public const float HordeScale = 0.12f, HordeGrowth = 0.85f;
+        public const float HordeScale = 0.12f, EarlyGrowth = 0.85f;
         /// <summary>The budget the scale is pinned to: Quarry Road's first round.</summary>
         const float ReferenceBudget = 270f;
+        /// <summary>Where growth turns linear: Horseshoe Basin's first round.</summary>
+        const float Knee = 5775f;
 
-        /// <summary>The budget this game fields for one of Orc Horde's.</summary>
-        public static float FieldedBudget(float original) =>
-            HordeScale * ReferenceBudget * Mathf.Pow(Mathf.Max(original, 1f) / ReferenceBudget, HordeGrowth);
+        /// <summary>
+        /// The pressure the horde can carry as bodies. Past it, a round fields
+        /// the same number of orcs but each is tougher: see <see cref="Toughness"/>.
+        /// About what Twin Gullies' opener sends, which the game runs smoothly.
+        /// </summary>
+        public const float BodyBudget = 800f;
+
+        /// <summary>The pressure this game fields for one of Orc Horde's budgets, before it is split into bodies and toughness.</summary>
+        public static float FieldedPressure(float original)
+        {
+            float Early(float b) => HordeScale * ReferenceBudget * Mathf.Pow(Mathf.Max(b, 1f) / ReferenceBudget, EarlyGrowth);
+            return original <= Knee ? Early(original) : Early(Knee) * original / Knee;
+        }
+
+        /// <summary>Health multiplier on the budget-drawn orcs of a round whose pressure outruns <see cref="BodyBudget"/>. Bosses and other set pieces are outside the budget and keep their own health.</summary>
+        public static float ToughnessFor(float original) => Mathf.Max(1f, FieldedPressure(original) / BodyBudget);
+
+        /// <summary>The pressure spent on bodies: what spawns.</summary>
+        public static float FieldedBudget(float original) => FieldedPressure(original) / ToughnessFor(original);
+
+        /// <summary>This round's toughness. Fixed for the round, so reinforcements match the horde they join.</summary>
+        public float Toughness => Phase == Phase.Build ? 1f : ToughnessFor(Round.pressureBudget);
 
         /// <summary>
         /// What each orc pays relative to its Orc Horde reward: the original budget
-        /// over the fielded one, so a round pays what the full horde would have
+        /// over the spawned one, so a round pays what the full horde would have
         /// and the skill tree's prices keep their pacing.
         /// </summary>
         public float RewardScale => Round.pressureBudget / FieldedBudget(Round.pressureBudget);
@@ -99,7 +123,9 @@ namespace OrcHordeFps
             ClearHorde();
             foreach (var b in Barricade.All) b.Restore();
             PlayerHealth.I?.Revive();
-            Announce($"Round {RoundIndex + 1}: {Round.name}  —  build your line, press G to start", Color.white, 6f);
+            float tough = ToughnessFor(Round.pressureBudget);
+            string toughNote = tough > 1.01f ? $"  ·  orcs have ×{tough:0.0} health" : "";
+            Announce($"Round {RoundIndex + 1}: {Round.name}{toughNote}  —  build your line, press G to start", Color.white, 6f);
         }
 
         public void StartRound()
@@ -183,7 +209,7 @@ namespace OrcHordeFps
             {
                 next ??= PickEnemy(ms);
                 if (next == null || pool < next.Pressure) break;
-                if (Enemy.Spawn(next, Map.SpawnPosition(PickSpawn(ms)), SpawnScatter) == null) break;
+                if (Enemy.Spawn(next, Map.SpawnPosition(PickSpawn(ms)), SpawnScatter, Toughness) == null) break;
                 pool -= next.Pressure;
                 spent += next.Pressure;
                 spentByType[next] = spentByType.TryGetValue(next, out var s) ? s + next.Pressure : next.Pressure;

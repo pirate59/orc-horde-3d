@@ -28,10 +28,14 @@ Ported from `orc-horde/src/content`. The original numbers are kept in their orig
 - **Abilities:** Mortar and Bombing Run
 - **Maps:** all 14 campaign maps and both test grounds, with every round, spawn gate, boss event, bridge and tunnel
 - **Bosses:** Siege Boss, Ram Chief (charges), Shieldwall (frontal shield), Warlord (summons a war band), Blood Totem (heals and regenerates)
+- **Progression:** the skill tree's currency nodes (tower unlocks, capacity, damage, fire rate, range, splash, slow, cone, barricade count and health, base health, Mortar and Bombing Run upgrades) and the eight 40-level masteries, with Orc Horde's economy. Kills pay win or lose; a win adds kills × (1 + 5% per campaign round), doubled on a first clear. Nodes with effects the FPS doesn't have yet (shields, traits, the seven later abilities) are hidden. An FPS-only Rifle line keeps your own gun in step.
 
-- **Progression:** the skill tree's currency nodes (tower unlocks, capacity, damage, fire rate, range, splash, slow, cone, barricade count and health, base health, Mortar and Bombing Run upgrades), with Orc Horde's economy. Kills pay win or lose; a win adds kills × (1 + 5% per campaign round), doubled on a first clear. Nodes with effects the FPS doesn't have yet (shields, traits, the seven later abilities) are hidden.
+Deliberate deviations are marked `DEVIATION` in the code. The main ones:
 
-Deliberate deviations are marked `DEVIATION` in the code. The main ones: horde size is scaled by `GameManager.HordeScale`, and each kill pays 1/`HordeScale` times its Orc Horde reward so the tree paces the same. Also, units that normally avoid walls will chew through a fully sealed road.
+- **Horde size.** Orc Horde's budgets grow nearly 600× over the campaign. Here a round fields 12% of the original at Quarry Road's opener, grows as budget^0.85 through the first two maps, then grows linearly in step with Orc Horde from Horseshoe Basin on (`GameManager.FieldedPressure`).
+- **Toughness.** Past `GameManager.BodyBudget` (800 pressure), extra pressure becomes toughness: the same number of orcs drawn from the budget, each with ×T health (heals scale too). Bosses and other set pieces sit outside the budget, as in Orc Horde, and keep their own health. The HUD shows toughness during a round.
+- **Rewards.** Each kill pays original budget ÷ spawned budget times its Orc Horde reward, so currency per round matches Orc Horde's.
+- **Sealed roads.** Units that normally avoid walls will chew through a fully sealed road.
 
 Currency, skills and unlocked maps are saved in PlayerPrefs. Esc → **Reset campaign** starts over.
 
@@ -77,5 +81,7 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/smoke" -smokemaps 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/campaign" -smokecampaign 4
 ```
+
+Each line logs the round's result, currency, skills bought, toughness, mean/95th-percentile frame time and the most orcs alive at once. Add `-smokenogun` for a towers-only run.
 
 Test runs keep their own save slot and never touch your campaign.
