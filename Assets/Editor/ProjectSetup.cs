@@ -35,6 +35,8 @@ public static class ProjectSetup
     {
         NameLayers();
         IncludeRuntimeShaders();
+        // A horde of skinned orcs is far cheaper skinned on the GPU.
+        PlayerSettings.gpuSkinning = true;
 
         System.IO.Directory.CreateDirectory("Assets/Scenes");
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -68,7 +70,7 @@ public static class ProjectSetup
     {
         var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset")[0]);
         var list = settings.FindProperty("m_AlwaysIncludedShaders");
-        foreach (var name in new[] { "Standard", "Sprites/Default", "OrcHorde/VertexLit", "OrcHorde/TexturedVertexLit" })
+        foreach (var name in new[] { "Standard", "Sprites/Default", "OrcHorde/VertexLit", "OrcHorde/TexturedVertexLit", "OrcHorde/Orc" })
         {
             var shader = Shader.Find(name);
             bool present = false;

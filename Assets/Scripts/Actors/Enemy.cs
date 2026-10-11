@@ -56,6 +56,14 @@ namespace OrcHordeFps
         Barricade wallTarget;
         MaterialPropertyBlock block;
         Collider[] colliders;
+        OrcAnimator orc;
+        bool puppet;
+        bool hitPlayerThisFrame;
+        Color tint = Color.white;
+
+        /// <summary>The dead lie a while before they sink; past this many, the oldest go at once.</summary>
+        const int MaxCorpses = 40;
+        static readonly Queue<GameObject> corpses = new Queue<GameObject>();
 
         // A bridge or tunnel crossing in progress.
         Links.Info crossing;
@@ -111,55 +119,51 @@ namespace OrcHordeFps
 
         void BuildBody()
         {
-            float r = Mathf.Max(Def.Radius, 0.25f) * 1.15f;
-            float h = Def.Height;
-            float headR = r * 0.75f;
-            var skin = Mats.Lit(Def.Color);
+            orc = OrcAnimator.Create(Def, transform);
 
-            var body = Shapes.Prim(PrimitiveType.Capsule, transform, new Vector3(0, (h - headR) / 2, 0),
-                new Vector3(r * 2, (h - headR) / 2, r * 2), skin, collider: true);
-            var head = Shapes.Prim(PrimitiveType.Sphere, transform, new Vector3(0, h - headR, 0.05f),
-                Vector3.one * headR * 2, Mats.Lit(Def.Color * 0.8f), collider: true);
-            head.AddComponent<EnemyHead>();
-
-            var eye = Mats.Lit(U.Hex(0xff2a1a), 3f);
-            Shapes.Prim(PrimitiveType.Sphere, head.transform, new Vector3(-0.3f, 0.12f, 0.42f), Vector3.one * 0.18f, eye);
-            Shapes.Prim(PrimitiveType.Sphere, head.transform, new Vector3(0.3f, 0.12f, 0.42f), Vector3.one * 0.18f, eye);
-            var tusk = Mats.Lit(U.Hex(0xe8e0c8));
-            Shapes.Prim(PrimitiveType.Cube, head.transform, new Vector3(-0.22f, -0.3f, 0.45f), new Vector3(0.08f, 0.22f, 0.08f), tusk);
-            Shapes.Prim(PrimitiveType.Cube, head.transform, new Vector3(0.22f, -0.3f, 0.45f), new Vector3(0.08f, 0.22f, 0.08f), tusk);
-
-            if (Def.Armour > 0)
-            {
-                var steel = Mats.Lit(U.Hex(0x9aa4ae));
-                Shapes.Prim(PrimitiveType.Cylinder, head.transform, new Vector3(0, 0.35f, 0), new Vector3(1.05f, 0.25f, 1.05f), steel);
-                Shapes.Prim(PrimitiveType.Cube, body.transform, new Vector3(0, 0.45f, 0), new Vector3(1.4f, 0.25f, 0.9f), steel);
-            }
-            if (Def.Wall == WallBehavior.DemolishNearestWall)
-                Shapes.Prim(PrimitiveType.Cube, body.transform, new Vector3(0, 0.1f, -0.55f), new Vector3(0.7f, 0.5f, 0.4f),
-                    Mats.Lit(U.Hex(0xff5a1a), 1.5f));
-            if (Def.HealRadius > 0)
-                Shapes.Prim(PrimitiveType.Cylinder, transform, new Vector3(r * 1.2f, h * 0.55f, 0),
-                    new Vector3(0.08f, h * 0.55f, 0.08f), Mats.Lit(U.Hex(0x4fbf7a), 1.5f));
-
-            if (Def.ShieldArcDegrees > 0)
-                Shapes.Prim(PrimitiveType.Cube, transform, new Vector3(0, h * 0.42f, r * 1.3f), new Vector3(r * 2.6f, h * 0.7f, 0.18f),
-                    Mats.Lit(U.Hex(0x8fd0ff), 0.6f));
-            if (Def.ChargeInterval > 0)
-                foreach (var x in new[] { -1f, 1f })
-                {
-                    var horn = Shapes.Prim(PrimitiveType.Cylinder, head.transform, new Vector3(x * 0.5f, 0.3f, 0.2f), new Vector3(0.15f, 0.4f, 0.15f), tusk);
-                    horn.transform.localRotation = Quaternion.Euler(0, 0, x * -50f);
-                }
-            if (Def.SummonThresholds != null)
-                Shapes.Prim(PrimitiveType.Cylinder, head.transform, new Vector3(0, 0.55f, 0), new Vector3(0.8f, 0.12f, 0.8f), Mats.Lit(U.Hex(0xffd166), 1.2f));
-            if (Def.RegenPerSecond > 0)
-                Shapes.Prim(PrimitiveType.Cylinder, transform, new Vector3(0, h + 0.8f, 0), new Vector3(0.3f, 0.8f, 0.3f), Mats.Lit(U.Hex(0xff6b8a), 2f));
+            // The body hitbox is a plain capsule on the orc's root; the head has its own, riding the head bone.
+            var hitbox = new GameObject("Body hitbox");
+            hitbox.transform.SetParent(transform, false);
+            var capsule = hitbox.AddComponent<CapsuleCollider>();
+            capsule.radius = Mathf.Max(Def.Radius, 0.25f) * 1.15f;
+            capsule.height = Def.Height * 0.82f;
+            capsule.center = new Vector3(0, Def.Height * 0.41f, 0);
 
             Layers.SetRecursive(gameObject, Layers.Enemy);
             bodyRenderers = GetComponentsInChildren<Renderer>();
             colliders = GetComponentsInChildren<Collider>();
             block = new MaterialPropertyBlock();
+
+            // No two orcs quite alike: a little lighter or darker, a little warmer or cooler.
+            float shade = Random.Range(0.82f, 1.05f), warmth = Random.Range(-0.05f, 0.05f);
+            tint = new Color(shade * (1 + warmth), shade, shade * (1 - warmth));
+            block.SetColor("_Tint", tint);
+            block.SetColor("_Flash", Color.black);
+            foreach (var r in bodyRenderers) r.SetPropertyBlock(block);
+        }
+
+        /// <summary>
+        /// For showing off, not fighting: stands still facing a way, walking in
+        /// place at its own pace, with no AI. Used by the smoke test's gallery.
+        /// </summary>
+        public void Puppet(Vector3 facing, bool walk)
+        {
+            puppet = true;
+            if (agent.isOnNavMesh) agent.isStopped = true;
+            agent.updateRotation = false;
+            facing.y = 0;
+            if (facing.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(facing);
+            orc.OverrideSpeed = walk ? Def.Speed : 0f;
+        }
+
+        public OrcAnimator Animator => orc;
+
+        /// <summary>The death fall without the kill: for the gallery.</summary>
+        public void DieForGallery()
+        {
+            if (!All.Remove(this)) return;
+            Health = 0f;
+            LeaveCorpse();
         }
 
         public void Slow(float factor, float duration)
@@ -185,6 +189,7 @@ namespace OrcHordeFps
             float dealt = Damage.AfterArmour(raw, Def.Armour);
             Health -= dealt;
             flashUntil = Time.time + 0.06f;
+            orc?.Flinch(Mathf.Clamp01(dealt / Mathf.Max(MaxHealth, 1f) * 6f + 0.15f));
             if (Health <= 0f) Die(killed: true);
             return dealt;
         }
@@ -198,16 +203,40 @@ namespace OrcHordeFps
             if (killed)
             {
                 GameManager.I.OnKilled(this);
-                Fx.Burst(AimPoint, Def.Radius * 3f + 0.4f, Def.Color * 0.8f, 0.4f);
+                Fx.Burst(AimPoint, Def.Radius * 1.5f + 0.2f, new Color(0.35f, 0.05f, 0.04f), 0.35f);
                 if (Def.SplitInto != null)
                     for (int i = 0; i < Def.SplitCount; i++) Spawn(Def.SplitInto, transform.position, 1.2f, Toughness);
+                LeaveCorpse();
+                return;
             }
             Destroy(gameObject);
+        }
+
+        /// <summary>Stops everything but the fall: no AI, no navigation, nothing to hit; the body goes after a few seconds.</summary>
+        void LeaveCorpse()
+        {
+            if (agent != null) agent.enabled = false;
+            foreach (var c in colliders) if (c != null) c.enabled = false;
+            block.SetColor("_Flash", Color.black);
+            foreach (var r in bodyRenderers) r.SetPropertyBlock(block);
+            orc.Die();
+            enabled = false;
+            corpses.Enqueue(gameObject);
+            while (corpses.Count > MaxCorpses)
+            {
+                var old = corpses.Dequeue();
+                if (old != null) Destroy(old);
+            }
+            Destroy(gameObject, 3.6f);
         }
 
         void Update()
         {
             if (!Alive) return;
+            if (puppet) { UpdateFlash(); return; }
+            orc.Attacking = (wallTarget != null && agent.isOnNavMesh && agent.isStopped) || hitPlayerThisFrame;
+            orc.Holding = Def.IsBoss && Time.time < pausedUntil || (Def.ChargeInterval > 0 && Time.time < windupEnds);
+            hitPlayerThisFrame = false;
             if (crossing != null || (agent.isOnNavMesh && agent.isOnOffMeshLink)) { Cross(); return; }
             if (!agent.isOnNavMesh) return;
             var gm = GameManager.I;
@@ -472,8 +501,11 @@ namespace OrcHordeFps
             if (player == null || !player.Alive) return;
             var d = player.transform.position - transform.position;
             d.y = 0;
-            if (d.magnitude < Def.Radius + 0.9f)
+            if (d.magnitude < Def.Radius + 0.9f && GameManager.I.Phase == Phase.Combat)
+            {
                 player.TakeDamage(PlayerDpsPerMetre * Mathf.Max(Def.Radius, 0.3f) * 3f * Time.deltaTime);
+                hitPlayerThisFrame = true;
+            }
         }
 
         void UpdateFlash()
@@ -481,8 +513,8 @@ namespace OrcHordeFps
             bool flash = Time.time < flashUntil;
             if (flash == flashing) return;
             flashing = flash;
-            if (flash) block.SetColor("_Color", Color.white);
-            else block.Clear();
+            block.SetColor("_Flash", flash ? new Color(0.55f, 0.5f, 0.45f) : Color.black);
+            block.SetColor("_Tint", tint);
             foreach (var r in bodyRenderers) r.SetPropertyBlock(block);
         }
 

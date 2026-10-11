@@ -2,7 +2,7 @@
 
 A first-person tower defence game built on [Orc Horde](../orc-horde)'s designs. You build a line of towers and barricades between rounds, then fight in it with a rifle while the horde comes down the road.
 
-Unity **6000.6.4f1**, built-in render pipeline, legacy Input Manager. It has no packages and no imported assets: the whole game is built at runtime from code.
+Unity **6000.6.4f1**, built-in render pipeline, legacy Input Manager, no packages. The world and the orcs are built at runtime from code. The only art assets are textures baked into `Assets/Resources/Art` (see **Art**).
 
 ## Play
 
@@ -57,6 +57,24 @@ Tools/export-maps.sh ~/code/orc-horde/branches/claude-new-build
 
 In 3D, path cells are open floor and tower-ground cells are a low step (a tower stands at the centre of one, as in Orc Horde). The remaining rock is cliff. Bridges carry orcs over a lane on a deck you can see, and tunnels hide them in the rock until they come out the other side.
 
+## Art
+
+**Textures.** Orc Horde → Bake Textures (`Assets/Editor/TextureBaker.cs`) writes every texture with a normal map derived from its height:
+- the path and tower ground: Orc Horde's own painted biome atlases (grassland, canyon, snow, dirt), quartered
+- cliff faces: Worley rock in strata
+- props: riveted metal, planks, stone blocks, and hide for the orcs
+
+Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cell light and dark.
+
+**Orcs.** Each type is one procedurally built skinned mesh on a shared 20-bone skeleton (`Assets/Scripts/Actors/Orcs`), designed after Orc Horde's sprite briefs: build, palette, armour, weapon. One draw call per orc, skinned on the GPU. `OrcAnimator` drives the bones with no animation clips:
+- a walk cycle paced by actual speed
+- an overhead swing while attacking
+- a crouch while winding up
+- a flinch on hits
+- a fall on death; corpses lie a few seconds, then sink
+
+The head hitbox rides the head bone, and each orc gets a slight random tint. A full 110-orc horde holds 60 fps.
+
 ## Layout
 
 | Path | Purpose |
@@ -65,10 +83,12 @@ In 3D, path cells are open floor and tower-ground cells are a low step (a tower 
 | `Assets/Resources/Maps.json` | Exported Orc Horde maps (generated) |
 | `Tools/` | Map exporter |
 | `Assets/Scripts/World` | Hex grid, terrain meshes, navmesh, bridges and tunnels |
-| `Assets/Scripts/Actors` | Enemies, towers, barricades, projectiles |
+| `Assets/Scripts/Actors` | Enemies, towers, barricades, projectiles; `Orcs/` holds the orc meshes, rig, designs and animator |
 | `Assets/Scripts/Player` | Movement, rifle, health, abilities, build mode |
 | `Assets/Scripts/Game` | Bootstrap, round loop, HUD, smoke test |
 | `Assets/Editor/ProjectSetup.cs` | Writes the scene, layers and build settings |
+| `Assets/Editor/TextureBaker.cs` | Bakes the textures |
+| `Assets/Shaders` | Terrain and orc shaders |
 
 ## Smoke tests
 
@@ -96,6 +116,18 @@ Each line logs the round's result, currency, skills bought, toughness, mean/95th
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/build" -smokebuild quarry_road
+```
+
+**Orc gallery:** every orc type lined up and photographed walking, side-on, swinging and falling, plus two close-ups:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/gallery" -smokegallery canyon_approach
+```
+
+**Stress:** 110 orcs of mixed kinds walking the map at normal speed, with frame times measured:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/stress" -smokestress canyon_approach
 ```
 
 Test runs keep their own save slot and never touch your campaign.

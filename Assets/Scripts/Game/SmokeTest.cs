@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest;
+        static bool buildTest, gallery, stress;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -58,6 +58,16 @@ namespace OrcHordeFps
                 for (int i = 0; i < args.Length - 1; i++)
                 {
                     if (args[i] == "-smoketest") outDir = args[i + 1];
+                    if (args[i] == "-smokestress")
+                    {
+                        stress = true;
+                        queue = new Queue<string>(new[] { args[i + 1] });
+                    }
+                    if (args[i] == "-smokegallery")
+                    {
+                        gallery = true;
+                        queue = new Queue<string>(new[] { args[i + 1] });
+                    }
                     if (args[i] == "-smokebuild")
                     {
                         buildTest = true;
@@ -95,6 +105,22 @@ namespace OrcHordeFps
         IEnumerator Start()
         {
             yield return null;
+            if (stress)
+            {
+                Invoke(nameof(GiveUp), 90f);
+                yield return Stress();
+                Log("done");
+                Application.Quit();
+                yield break;
+            }
+            if (gallery)
+            {
+                Invoke(nameof(GiveUp), 90f);
+                yield return Gallery();
+                Log("done");
+                Application.Quit();
+                yield break;
+            }
             if (buildTest)
             {
                 // Never let a broken scenario hold the process open.
@@ -405,6 +431,125 @@ namespace OrcHordeFps
             expectTowers = Tower.All.Count;
             expectWalls = Barricade.All.Count;
             buildStage = 1;
+        }
+
+        /// <summary>
+        /// Every orc type lined up in front of the player, walking in place:
+        /// photographed wide and close, mid-swing, and falling.
+        /// </summary>
+        IEnumerator Gallery()
+        {
+            var gm = GameManager.I;
+            var pc = PlayerController.I;
+            BuildController.ClearLayout();
+            gm.HelpOpen = false;
+            var start = pc.transform.position;
+            var fwd = pc.transform.forward;
+            var right = pc.transform.right;
+
+            var small = new[] { Enemies.Fodder, Enemies.Runner, Enemies.Armoured, Enemies.Sapper, Enemies.Shaman, Enemies.Splitter, Enemies.SiegeElite };
+            var big = new[] { Enemies.SiegeBreaker, Enemies.SiegeBoss, Enemies.RamChief, Enemies.Shieldwall, Enemies.Warlord, Enemies.BloodTotem };
+
+            foreach (var (row, name, distance, spacing) in new[] { (small, "small", 7f, 1.6f), (big, "bosses", 12f, 3.4f) })
+            {
+                var line = new List<Enemy>();
+                for (int i = 0; i < row.Length; i++)
+                {
+                    var at = start + fwd * distance + right * (i - (row.Length - 1) / 2f) * spacing;
+                    var e = Enemy.Spawn(row[i], at, 0f);
+                    if (e == null) { Log($"gallery: could not place {row[i].Name}"); continue; }
+                    e.transform.position = at;
+                    e.Puppet(-fwd, walk: true);
+                    line.Add(e);
+                }
+                pc.transform.rotation = Quaternion.LookRotation(fwd);
+                yield return new WaitForSeconds(0.4f);
+                yield return Snap($"gallery-{name}-walk-a");
+                yield return new WaitForSeconds(0.27f);
+                yield return Snap($"gallery-{name}-walk-b");
+
+                // Three-quarter view of the line, from the side.
+                foreach (var e in line) e.Puppet(right, walk: true);
+                yield return new WaitForSeconds(0.35f);
+                Log($"gallery: {name} side {line[0].Animator.DebugState}");
+                yield return Snap($"gallery-{name}-side");
+
+                // Swinging.
+                foreach (var e in line) { e.Puppet(-fwd, walk: false); e.Animator.Attacking = true; }
+                yield return new WaitForSeconds(0.45f);
+                Log($"gallery: {name} attack {line[0].Animator.DebugState}");
+                yield return Snap($"gallery-{name}-attack");
+
+                foreach (var e in line) e.DieForGallery();
+                yield return new WaitForSeconds(0.4f);
+                yield return Snap($"gallery-{name}-fall");
+                yield return new WaitForSeconds(1.2f);
+                yield return Snap($"gallery-{name}-down");
+                yield return new WaitForSeconds(3f);
+            }
+
+            // A close look at two faces.
+            foreach (var def in new[] { Enemies.Fodder, Enemies.Armoured })
+            {
+                var e = Enemy.Spawn(def, start + fwd * 2.2f, 0f);
+                Log($"gallery: close {def.Id} spawned={e != null} alive={Enemy.All.Count} at={(e != null ? e.transform.position.ToString() : "-")} player={pc.transform.position}");
+                e.transform.position = start + fwd * 2.2f;
+                e.Puppet(-fwd, walk: false);
+                pc.transform.rotation = Quaternion.LookRotation(fwd);
+                yield return new WaitForSeconds(0.5f);
+                yield return Snap($"gallery-close-{def.Id}");
+                e.Die(killed: false);
+                yield return null;
+            }
+            Log($"gallery: done, vertices fodder={OrcDesigns.Get(Enemies.Fodder).mesh.vertexCount} boss={OrcDesigns.Get(Enemies.SiegeBoss).mesh.vertexCount}");
+        }
+
+        /// <summary>
+        /// The worst case for rendering and AI: a full 110 orcs of every kind
+        /// walking the map at normal speed, no towers, frame times measured.
+        /// </summary>
+        IEnumerator Stress()
+        {
+            var gm = GameManager.I;
+            BuildController.ClearLayout();
+            gm.HelpOpen = false;
+            var kinds = new[] { Enemies.Fodder, Enemies.Fodder, Enemies.Fodder, Enemies.Runner, Enemies.Armoured, Enemies.Shaman, Enemies.SiegeElite, Enemies.Splitter };
+            for (int i = 0; i < 110; i++)
+            {
+                var gate = gm.Map.spawns[i % gm.Map.spawns.Length];
+                Enemy.Spawn(kinds[i % kinds.Length], gm.Map.World(gate.x, gate.y), 6f);
+                if (i % 10 == 9) yield return null;
+            }
+            yield return new WaitForSeconds(4f);
+            var pc = PlayerController.I;
+            frameMs.Clear();
+            peakAlive = 0;
+            float t = 0;
+            bool shot = false;
+            while (t < 12f)
+            {
+                t += Time.unscaledDeltaTime;
+                frameMs.Add(Time.unscaledDeltaTime * 1000f);
+                peakAlive = Mathf.Max(peakAlive, Enemy.All.Count);
+                if (!shot && t > 6f && Enemy.All.Count > 0)
+                {
+                    shot = true;
+                    var look = Enemy.All[0].transform.position - pc.transform.position;
+                    look.y = 0;
+                    pc.transform.rotation = Quaternion.LookRotation(look);
+                    yield return Snap($"{gm.Map.id}-stress");
+                }
+                yield return null;
+            }
+            Log($"stress: {gm.Map.id} {Perf()} vertices={Enemy.All.Count * OrcDesigns.Get(Enemies.Fodder).mesh.vertexCount} (approx)");
+        }
+
+        /// <summary>A screenshot, waiting for it to be taken: the capture happens at the end of the frame, so anything changed before then would be in it.</summary>
+        static IEnumerator Snap(string name)
+        {
+            Shot(name);
+            yield return new WaitForEndOfFrame();
+            yield return null;
         }
 
         void GiveUp()
