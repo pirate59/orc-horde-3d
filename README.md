@@ -14,6 +14,7 @@ Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it open
 | Shoot | Left mouse, R to reload. Headshots do ×2 |
 | Abilities | Hold Q (Mortar) or E (Bombing Run) to aim, release to fire |
 | Build (between rounds) | 1–5 for towers, 6 for barricade, R to rotate, left click to place, X or right click to remove, 0 to put away |
+| Skill tree (between rounds) | B or Tab |
 | Start round / continue | G |
 | Help / pause | H / Esc |
 
@@ -28,7 +29,11 @@ Ported from `orc-horde/src/content`. The original numbers are kept in their orig
 - **Maps:** all 14 campaign maps and both test grounds, with every round, spawn gate, boss event, bridge and tunnel
 - **Bosses:** Siege Boss, Ram Chief (charges), Shieldwall (frontal shield), Warlord (summons a war band), Blood Totem (heals and regenerates)
 
-Deliberate deviations are marked `DEVIATION` in the code. The main ones: horde size is scaled by `GameManager.HordeScale` (0.12), the later towers get small starting limits because there's no skill tree yet, and units that normally avoid walls will chew through a fully sealed road.
+- **Progression:** the skill tree's currency nodes (tower unlocks, capacity, damage, fire rate, range, splash, slow, cone, barricade count and health, base health, Mortar and Bombing Run upgrades), with Orc Horde's economy. Kills pay win or lose; a win adds kills × (1 + 5% per campaign round), doubled on a first clear. Nodes with effects the FPS doesn't have yet (shields, traits, the seven later abilities) are hidden.
+
+Deliberate deviations are marked `DEVIATION` in the code. The main ones: horde size is scaled by `GameManager.HordeScale`, and each kill pays 1/`HordeScale` times its Orc Horde reward so the tree paces the same. Also, units that normally avoid walls will chew through a fully sealed road.
+
+Currency, skills and unlocked maps are saved in PlayerPrefs. Esc → **Reset campaign** starts over.
 
 ## Maps
 
@@ -53,11 +58,24 @@ In 3D, path cells are open floor and tower-ground cells are a low step (a tower 
 | `Assets/Scripts/Game` | Bootstrap, round loop, HUD, smoke test |
 | `Assets/Editor/ProjectSetup.cs` | Writes the scene, layers and build settings |
 
-## Smoke test
+## Smoke tests
 
-Builds a macOS player, then on each map places a layout, plays round 1 at 4× speed, and writes overhead and fight screenshots plus a summary line to `Logs/smoke/`:
+Build a macOS player first:
 
 ```bash
 Unity -batchmode -quit -projectPath . -executeMethod ProjectSetup.BuildMac
+```
+
+**Map tour:** on each map it places a layout, plays round 1 at 4× speed, and writes overhead and fight screenshots plus a summary line to `Logs/smoke/`:
+
+```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/smoke" -smokemaps all
 ```
+
+**Campaign balance:** plays the first N campaign maps from a fresh save, towers only. It spends all its currency between rounds and retries a lost round up to four times. Nobody shoots, so the result is a floor on what a real player can do:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/campaign" -smokecampaign 4
+```
+
+Test runs keep their own save slot and never touch your campaign.

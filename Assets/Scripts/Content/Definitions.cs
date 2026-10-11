@@ -40,6 +40,8 @@ namespace OrcHordeFps
     public sealed class TowerDef
     {
         public string Id, Name, Description;
+        public bool UnlockedByDefault;
+        /// <summary>Base deployment limit, before the skill tree's capacity.</summary>
         public int Limit;
         public float Footprint, Damage, Range, FireInterval;
         public bool TargetFirst;

@@ -15,6 +15,8 @@ namespace OrcHordeFps
 
         public WallDef Def { get; private set; }
         public float Health { get; private set; }
+        /// <summary>Full health with the skill tree's reinforcement, taken when built and on every restore.</summary>
+        public float MaxHealth { get; private set; }
         public bool Standing { get; private set; } = true;
 
         BoxCollider box;
@@ -27,7 +29,7 @@ namespace OrcHordeFps
             go.transform.SetPositionAndRotation(position, rotation);
             var b = go.AddComponent<Barricade>();
             b.Def = def;
-            b.Health = def.Health;
+            b.MaxHealth = b.Health = Progression.WallHealth;
 
             b.intact = BuildVisual(def, go.transform);
             b.rubble = new GameObject("Rubble");
@@ -100,7 +102,7 @@ namespace OrcHordeFps
         public void Restore()
         {
             Standing = true;
-            Health = Def.Health;
+            MaxHealth = Health = Progression.WallHealth;
             intact.SetActive(true);
             rubble.SetActive(false);
             box.enabled = true;

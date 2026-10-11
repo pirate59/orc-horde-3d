@@ -4,12 +4,24 @@ using UnityEngine.SceneManagement;
 namespace OrcHordeFps
 {
     /// <summary>
+    /// Names the saved keys. A smoke-test run keeps its own, so testing never
+    /// touches a player's campaign.
+    /// </summary>
+    public static class SaveSlot
+    {
+        static readonly string suffix =
+            System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-smoketest") >= 0 ? ".smoketest" : "";
+
+        public static string Key(string name) => "orc-horde-fps." + name + suffix;
+    }
+
+    /// <summary>
     /// Which map is being played, and how far the campaign has got. Changing map
     /// reloads the scene: every map is built fresh by <see cref="Bootstrap"/>.
     /// </summary>
     public static class Session
     {
-        const string UnlockedKey = "orc-horde-fps.unlocked", LastMapKey = "orc-horde-fps.last-map";
+        static readonly string UnlockedKey = SaveSlot.Key("unlocked"), LastMapKey = SaveSlot.Key("last-map");
 
         static string mapId;
 
@@ -51,6 +63,8 @@ namespace OrcHordeFps
             int index = Catalog.CampaignIndex(id);
             return index >= 0 && index + 1 < Catalog.campaign.Length ? Catalog.campaign[index + 1] : null;
         }
+
+        public static void ResetUnlocks() => PlayerPrefs.SetInt(UnlockedKey, 1);
 
         public static void MarkHeld(string id)
         {

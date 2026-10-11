@@ -55,7 +55,7 @@ namespace OrcHordeFps
             controller = GetComponent<CharacterController>();
         }
 
-        public bool InputLive => !GameManager.I.Paused && PlayerHealth.I.Alive;
+        public bool InputLive => !GameManager.I.Paused && !GameManager.I.ShopOpen && PlayerHealth.I.Alive;
 
         public void Teleport(Vector3 position)
         {

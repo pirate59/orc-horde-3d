@@ -10,6 +10,7 @@ import { ALL_MAPS } from "orc-horde/content/maps/allMaps";
 import { CAMPAIGN_DEFINITION } from "orc-horde/content/campaign";
 import { HEX_APOTHEM, hexCenter, isWallGroundCell } from "orc-horde/content/hexCells";
 import { isPointInsidePolygon } from "orc-horde/content/mapBuilder";
+import { SKILL_TREE_DEFINITION } from "orc-horde/content/skills";
 
 const HEX_RADIUS = (HEX_APOTHEM * 2) / Math.sqrt(3);
 const COLUMN_STEP = HEX_RADIUS * 1.5;
@@ -74,7 +75,36 @@ function exportMap(map) {
   };
 }
 
-const out = process.argv[2];
+// The skill tree, as plain data. Unity decides which effects it can honour.
+function exportSkills() {
+  const prereq = (p) => ({ nodeId: p.nodeId, minimumLevel: p.minimumLevel });
+  return SKILL_TREE_DEFINITION.nodes.map((n) => ({
+    id: n.id,
+    name: n.name,
+    description: n.description,
+    currency: n.currency ?? "currency",
+    mastery: n.mastery ?? false,
+    x: n.uiPosition.x,
+    y: n.uiPosition.y,
+    prerequisites: n.prerequisites.map(prereq),
+    alternatives: (n.alternativePrerequisites ?? []).map(prereq),
+    levels: n.levels.map((l) => ({
+      cost: l.cost,
+      label: l.label,
+      description: l.description,
+      effects: l.effects.map((e) => ({
+        kind: e.kind,
+        target: e.towerTypeId ?? e.abilityId ?? "",
+        stat: e.stat ?? "",
+        amount: e.amount ?? 0,
+      })),
+    })),
+  }));
+}
+
+const outDir = process.argv[2];
 const maps = ALL_MAPS.map(exportMap);
-writeFileSync(out, JSON.stringify({ campaign: CAMPAIGN_DEFINITION.mapOrder, maps }));
-console.log(`wrote ${maps.length} maps to ${out}`);
+writeFileSync(`${outDir}/Maps.json`, JSON.stringify({ campaign: CAMPAIGN_DEFINITION.mapOrder, maps }));
+const skills = exportSkills();
+writeFileSync(`${outDir}/Skills.json`, JSON.stringify({ nodes: skills }));
+console.log(`wrote ${maps.length} maps and ${skills.length} skill nodes to ${outDir}`);

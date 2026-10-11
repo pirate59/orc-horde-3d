@@ -6,59 +6,141 @@ using UnityEngine;
 namespace OrcHordeFps
 {
     /// <summary>
-    /// Unattended check of a real build. Run the player with
-    /// <c>-smoketest &lt;dir&gt; [-smokemaps all|id,id]</c> and on each map it places a
-    /// layout, photographs the map from above and the fight from the player,
-    /// plays the first round at speed, writes a line to summary.txt, then moves
-    /// to the next map. Errors land in the player log.
+    /// Unattended checks of a real build. Errors land in the player log; results in &lt;dir&gt;/summary.txt.
+    ///
+    /// <c>-smoketest &lt;dir&gt; -smokemaps all|id,id</c> tours maps: on each it places a
+    /// layout, photographs the map from above and the fight from the player, and
+    /// plays the first round at speed.
+    ///
+    /// <c>-smoketest &lt;dir&gt; -smokecampaign &lt;maps&gt;</c> plays the campaign from a fresh
+    /// save as a towers-only player would: every round in order, spending all
+    /// its currency between rounds and retrying a lost round a few times, since
+    /// losses pay too. No one shoots, so it is a floor on what a player can do.
     /// </summary>
     public sealed class SmokeTest : MonoBehaviour
     {
-        const float Speed = 4f, RealSecondsPerMap = 50f;
+        const float TourSpeed = 4f, CampaignSpeed = 6f, RealSecondsPerRound = 60f;
+        const int MaxAttempts = 4;
+        /// <summary>The bot gunner: a modest shot, not an aimbot.</summary>
+        const float BotAccuracy = 0.55f, BotHeadshotShare = 0.3f, BotSightRange = 45f;
 
         static Queue<string> queue;
         static string outDir;
+        static bool campaign;
+        static int campaignMaps;
+        static bool initialised;
+        static bool gunner = true;
 
         public static void AttachIfRequested()
         {
-            var args = System.Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length - 1; i++)
+            if (!initialised)
             {
-                if (args[i] == "-smoketest") outDir ??= args[i + 1];
-                if (args[i] == "-smokemaps" && queue == null)
+                initialised = true;
+                var args = System.Environment.GetCommandLineArgs();
+                var catalog = Session.Catalog;
+                for (int i = 0; i < args.Length - 1; i++)
                 {
-                    var catalog = Session.Catalog;
-                    queue = new Queue<string>(args[i + 1] == "all"
-                        ? System.Array.ConvertAll(catalog.maps, m => m.id)
-                        : args[i + 1].Split(','));
-                    // The map already built is the first one tested.
-                    if (queue.Count > 0 && queue.Peek() != Session.CurrentId) { Session.Play(queue.Peek()); return; }
+                    if (args[i] == "-smoketest") outDir = args[i + 1];
+                    if (args[i] == "-smokemaps")
+                        queue = new Queue<string>(args[i + 1] == "all"
+                            ? System.Array.ConvertAll(catalog.maps, m => m.id)
+                            : args[i + 1].Split(','));
+                    if (args[i] == "-smokenogun") gunner = false;
+                    if (args[i] == "-smokecampaign")
+                    {
+                        campaign = true;
+                        campaignMaps = int.Parse(args[i + 1]);
+                        queue = new Queue<string>(catalog.campaign);
+                        Progression.Reset();
+                        Session.ResetUnlocks();
+                    }
                 }
+                if (System.Array.IndexOf(args, "-smokenogun") >= 0) gunner = false;
+                if (outDir == null) return;
+                Directory.CreateDirectory(outDir);
+                // The map already built is the first one tested.
+                if (queue != null && queue.Count > 0 && queue.Peek() != Session.CurrentId) { Session.Play(queue.Peek()); return; }
             }
             if (outDir != null) new GameObject("SmokeTest").AddComponent<SmokeTest>();
         }
 
         IEnumerator Start()
         {
-            Directory.CreateDirectory(outDir);
+            yield return null;
+            yield return campaign ? Campaign() : Tour();
+
+            queue?.Dequeue();
+            bool more = queue != null && queue.Count > 0 && (!campaign || --campaignMaps > 0);
+            if (more && (!campaign || GameManager.I.Phase == Phase.MapHeld)) { Session.Play(queue.Peek()); yield break; }
+            Log("done");
+            Application.Quit();
+        }
+
+        IEnumerator Tour()
+        {
             var gm = GameManager.I;
             var map = gm.Map;
-            yield return null;
-
             int placed = PlaceLayout(gm);
-            var player = PlayerController.I;
             yield return Overhead(map);
-
-            gm.StartRound();
-            Time.timeScale = Speed;
+            gm.ShopOpen = true;
+            yield return null;
+            Shot($"{map.id}-skills");
+            yield return null;
+            gm.ShopOpen = false;
             float t = 0;
-            bool shot = false;
-            while (gm.Phase == Phase.Combat && t < RealSecondsPerMap)
+            yield return PlayRound(gm, TourSpeed, true, s => t = s);
+            Log($"{map.id,-18} towers={placed} phase={gm.Phase} base={gm.BaseHealth}/{gm.MaxBaseHealth} " +
+                $"kills={gm.Kills} alive={Enemy.All.Count} spawned={gm.SpawnProgress:P0} links={Links.All.Count}/{map.links.Length} " +
+                $"crossings={Enemy.LinkCrossings} real={t:0}s");
+        }
+
+        IEnumerator Campaign()
+        {
+            var gm = GameManager.I;
+            var map = gm.Map;
+            while (true)
+            {
+                for (int attempt = 1; ; attempt++)
+                {
+                    int bought = SpendEverything();
+                    int placed = PlaceLayout(gm);
+                    int before = Progression.Currency;
+                    float t = 0;
+                    yield return PlayRound(gm, CampaignSpeed, attempt == 1 && gm.RoundIndex == 0, s => t = s);
+                    bool won = gm.Phase == Phase.Won || gm.Phase == Phase.MapHeld;
+                    var reward = gm.LastReward;
+                    Log($"{map.id,-18} r{gm.RoundIndex + 1} try{attempt} {(won ? "WON " : gm.Phase == Phase.Lost ? "lost" : "TIME")} " +
+                        $"base={gm.BaseHealth}/{gm.MaxBaseHealth} kills={gm.Kills} earned={(reward?.Total ?? 0),6} " +
+                        $"bank={Progression.Currency,6} bought={bought,2} towers={placed,2} skills={SkillLevels(),3} real={t:0}s" +
+                        (gm.Phase == Phase.Lost ? $"  [{gm.LastLossReason}]" : ""));
+                    if (won) break;
+                    if (attempt >= MaxAttempts || gm.Phase == Phase.Combat) { Log($"stuck on {map.id} round {gm.RoundIndex + 1}"); yield break; }
+                    gm.Continue(); // back to build for a retry
+                    yield return null;
+                }
+                if (gm.Phase == Phase.MapHeld) yield break;
+                gm.Continue(); // on to the next round
+                yield return null;
+            }
+        }
+
+        /// <summary>Starts the round and runs it at speed until it ends or the real-time cap.</summary>
+        IEnumerator PlayRound(GameManager gm, float speed, bool photograph, System.Action<float> realSeconds)
+        {
+            var player = PlayerController.I;
+            var map = gm.Map;
+            gm.StartRound();
+            Time.timeScale = speed;
+            float t = 0;
+            bool shot = !photograph;
+            var bot = campaign && gunner ? new BotGunner() : null;
+            while (gm.Phase == Phase.Combat && t < RealSecondsPerRound)
             {
                 t += Time.unscaledDeltaTime;
+                bot?.Tick();
                 if (!shot && Enemy.All.Count > 0)
                 {
-                    // Stand a little up the path from the base and face the nearest orc.
+                    // Face the orc nearest the base once one is close enough to see.
                     var nearest = Enemy.All[0];
                     foreach (var e in Enemy.All)
                         if ((e.transform.position - map.Base).sqrMagnitude < (nearest.transform.position - map.Base).sqrMagnitude) nearest = e;
@@ -72,28 +154,134 @@ namespace OrcHordeFps
                         yield return null;
                         Shot($"{map.id}-fight");
                         yield return null;
-                        Time.timeScale = Speed;
+                        Time.timeScale = speed;
                     }
                 }
                 yield return null;
             }
             Time.timeScale = 1f;
-            Log($"{map.id,-18} towers={placed} phase={gm.Phase} base={gm.BaseHealth}/{gm.Round.startingHealth} " +
-                $"kills={gm.Kills} alive={Enemy.All.Count} spawned={gm.SpawnProgress:P0} links={Links.All.Count}/{map.links.Length} " +
-                $"crossings={Enemy.LinkCrossings} real={t:0}s");
+            realSeconds(t);
+        }
 
-            queue?.Dequeue();
-            if (queue != null && queue.Count > 0) { Session.Play(queue.Peek()); yield break; }
-            Log("done");
-            Application.Quit();
+        /// <summary>
+        /// Stands in for a player at the start position: shoots the nearest orc it
+        /// can see at the rifle's real rate, hitting a little over half the time,
+        /// reloads, and drops the Mortar and Bombing Run on the thickest crowd.
+        /// A boss in sight takes priority for both, as a player soon learns: armour
+        /// shrugs off tower fire, and a headshot is the hardest hit in the game.
+        /// Shots go through the same damage path as the player's own.
+        /// </summary>
+        sealed class BotGunner
+        {
+            float nextShot, nextThink;
+            int ammo = PlayerWeapon.MagazineSize;
+
+            public void Tick()
+            {
+                var player = PlayerController.I;
+                if (!PlayerHealth.I.Alive) return;
+                var eye = player.Cam.transform.position;
+
+                while (Time.time >= nextShot)
+                {
+                    nextShot = Mathf.Max(nextShot, Time.time - 0.5f) + PlayerWeapon.FireInterval / Progression.RifleFireRate;
+                    if (ammo == 0) { ammo = PlayerWeapon.MagazineSize; nextShot += PlayerWeapon.ReloadSeconds; break; }
+                    var target = Nearest(eye, bossesOnly: true) ?? Nearest(eye, bossesOnly: false);
+                    if (target == null) break;
+                    ammo--;
+                    var look = target.AimPoint - eye;
+                    player.transform.rotation = Quaternion.LookRotation(new Vector3(look.x, 0, look.z));
+                    if (Random.value < BotAccuracy) target.TakeDamage(PlayerWeapon.Damage * Progression.RifleDamage, Random.value < BotHeadshotShare, eye);
+                }
+
+                if (Time.time < nextThink) return;
+                nextThink = Time.time + 0.5f;
+                var boss = Nearest(eye, bossesOnly: true);
+                if (boss != null && PlayerAbilities.I.Fire(Abilities.Mortar, boss.transform.position + boss.Velocity * 0.9f, Vector3.forward)) return;
+                var crowd = Crowd(Abilities.Mortar.Radius, out int count);
+                if (count >= 5)
+                {
+                    var forward = GameManager.I.Map.Base - crowd;
+                    forward.y = 0;
+                    var abilities = PlayerAbilities.I;
+                    if (!abilities.Fire(Abilities.Mortar, crowd, forward.normalized) && count >= 8)
+                        abilities.Fire(Abilities.BombingRun, crowd - forward.normalized * 4f, forward.normalized);
+                }
+            }
+
+            static Enemy Nearest(Vector3 eye, bool bossesOnly)
+            {
+                Enemy best = null;
+                float bestDist = BotSightRange;
+                foreach (var e in Enemy.All)
+                {
+                    if (!e.Targetable || (bossesOnly && !e.Def.ShowsHealthBar)) continue;
+                    float d = Vector3.Distance(eye, e.AimPoint);
+                    if (d >= bestDist) continue;
+                    if (Physics.Linecast(eye, e.AimPoint, Layers.RockMask | Layers.WallMask, QueryTriggerInteraction.Ignore)) continue;
+                    bestDist = d;
+                    best = e;
+                }
+                return best;
+            }
+
+            /// <summary>The orc with the most others within <paramref name="radius"/>, among those in sight range.</summary>
+            static Vector3 Crowd(float radius, out int count)
+            {
+                var eye = PlayerController.I.Cam.transform.position;
+                count = 0;
+                var at = Vector3.zero;
+                foreach (var e in Enemy.All)
+                {
+                    if (!e.Targetable || Vector3.Distance(eye, e.transform.position) > BotSightRange) continue;
+                    int n = 0;
+                    foreach (var o in Enemy.All)
+                        if ((o.transform.position - e.transform.position).sqrMagnitude < radius * radius) n++;
+                    if (n > count) { count = n; at = e.transform.position; }
+                }
+                return at;
+            }
+        }
+
+        /// <summary>
+        /// Buys until nothing is affordable, cheapest first, with unlocks and
+        /// capacity favoured: more guns before better guns, as most players go.
+        /// </summary>
+        static int SpendEverything()
+        {
+            int bought = 0;
+            while (true)
+            {
+                SkillNode best = null;
+                float bestScore = float.MaxValue;
+                foreach (var n in Progression.Offered)
+                {
+                    if (!Progression.CanBuy(n)) continue;
+                    var next = Progression.NextLevel(n);
+                    bool more = System.Array.Exists(next.effects, e => e.kind == "unlock_tower" || e.kind == "tower_capacity_delta");
+                    float score = next.cost * (more ? 0.5f : 1f);
+                    if (score < bestScore) { bestScore = score; best = n; }
+                }
+                if (best == null || !Progression.Buy(best)) return bought;
+                bought++;
+            }
+        }
+
+        static int SkillLevels()
+        {
+            int total = 0;
+            foreach (var n in Progression.Offered) total += Progression.Level(n.id);
+            return total;
         }
 
         /// <summary>
         /// A layout a first-time player might build: every tower allowance spent on
         /// the tower ground next to the path, nearest the base first, spread out.
+        /// Rebuilt from scratch, so it always matches the current limits.
         /// </summary>
         static int PlaceLayout(GameManager gm)
         {
+            foreach (var t in Tower.All.ToArray()) { Tower.All.Remove(t); Destroy(t.gameObject); }
             var grid = gm.Grid;
             var cells = new List<Vector2Int>();
             for (int c = 0; c < grid.Columns; c++)
@@ -107,7 +295,7 @@ namespace OrcHordeFps
 
             int placed = 0, next = 2;
             foreach (var def in Towers.All)
-                for (int i = 0; i < def.Limit && next < cells.Count; i++, next += 4, placed++)
+                for (int i = 0; i < Progression.Tower(def).Limit && next < cells.Count; i++, next += 3, placed++)
                     Tower.Create(def, grid.Center(cells[next]) + Vector3.up * MapBuilder.TowerGroundHeight);
             return placed;
         }

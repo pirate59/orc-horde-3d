@@ -118,13 +118,15 @@ namespace OrcHordeFps
             ghost.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(PlayerController.I.transform.forward));
 
             rangeRing.enabled = true;
-            Fx.SetCircle(rangeRing, pos + Vector3.up * 0.05f, def.Range, 64);
+            Fx.SetCircle(rangeRing, pos + Vector3.up * 0.05f, Progression.Tower(def).Range, 64);
 
-            if (Placed(def) >= def.Limit) { Invalid($"All {def.Limit} {def.Name}s are placed — X removes one"); return; }
+            int limit = Progression.Tower(def).Limit;
+            if (!Progression.Tower(def).Unlocked) { Invalid($"{def.Name} is locked — unlock it in the skill tree (B)"); return; }
+            if (Placed(def) >= limit) { Invalid($"All {limit} {def.Name}s are placed — X removes one, B buys capacity"); return; }
             if (grid.Kind(cell) != HexGrid.TowerGround) { Invalid("Towers stand on the raised ground beside the path"); return; }
             foreach (var t in Tower.All)
                 if ((t.transform.position - pos).sqrMagnitude < 0.25f) { Invalid("A tower already stands here"); return; }
-            Valid($"Left click: place {def.Name}  ({Placed(def)}/{def.Limit})");
+            Valid($"Left click: place {def.Name}  ({Placed(def)}/{limit})");
         }
 
         void PreviewBarricade(RaycastHit hit)
@@ -135,7 +137,8 @@ namespace OrcHordeFps
             var rot = Quaternion.Euler(0, wallYaw, 0);
             ghost.transform.SetPositionAndRotation(pos, rot);
 
-            if (Barricade.All.Count >= def.Limit) { Invalid($"All {def.Limit} barricades are placed — X removes one"); return; }
+            int limit = Progression.WallLimit;
+            if (Barricade.All.Count >= limit) { Invalid($"All {limit} barricades are placed — X removes one"); return; }
             if (hit.collider.gameObject.layer != Layers.Road || GameManager.I.Grid.Kind(GameManager.I.Grid.CellAt(pos)) != HexGrid.WallPath)
             { Invalid("Barricades go on the path"); return; }
             var map = GameManager.I.Map;
@@ -151,7 +154,7 @@ namespace OrcHordeFps
                     Layers.WallMask | Layers.RockMask | Layers.TowerMask | (1 << Layers.BuildGround) | (1 << Layers.Player),
                     QueryTriggerInteraction.Ignore))
             { Invalid("Blocked — or you're standing in it"); return; }
-            Valid($"Left click: place barricade  ({Barricade.All.Count}/{def.Limit})   R: rotate");
+            Valid($"Left click: place barricade  ({Barricade.All.Count}/{limit})   R: rotate");
         }
 
         void Valid(string hint) { GhostValid = true; Hint = hint; }

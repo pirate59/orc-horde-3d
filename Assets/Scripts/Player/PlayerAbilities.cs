@@ -61,10 +61,17 @@ namespace OrcHordeFps
 
             // Released: call it in, or let it go if the crosshair was on the sky.
             aiming = null;
-            if (!onTarget) return;
-            readyAt[ability] = Time.time + ability.Cooldown;
+            if (onTarget) Fire(ability, point, forward);
+        }
+
+        /// <summary>Calls an ability in at a point, if it is off cooldown. Returns whether it fired.</summary>
+        public bool Fire(AbilityDef ability, Vector3 point, Vector3 forward)
+        {
+            if (!Usable || CooldownLeft(ability) > 0f) return false;
+            readyAt[ability] = Time.time + Progression.AbilityCooldown(ability);
             if (ability == Abilities.Mortar) StartCoroutine(Mortar(point));
             else StartCoroutine(BombingRun(point, forward));
+            return true;
         }
 
         bool TryAim(out Vector3 point, out Vector3 forward)
@@ -86,7 +93,7 @@ namespace OrcHordeFps
             var lift = point + Vector3.up * 0.08f;
             if (ability.Radius > 0)
             {
-                Fx.SetCircle(marker, lift, ability.Radius);
+                Fx.SetCircle(marker, lift, Progression.AbilityRadius(ability));
                 return;
             }
             var right = Vector3.Cross(Vector3.up, forward) * ability.Width / 2;
@@ -99,16 +106,16 @@ namespace OrcHordeFps
         IEnumerator Mortar(Vector3 point)
         {
             var shell = Shapes.Prim(PrimitiveType.Sphere, null, point + Vector3.up * 30f, Vector3.one * 0.5f, Mats.Lit(U.Hex(0x22262b)));
-            Fx.Ring(point + Vector3.up * 0.1f, Abilities.Mortar.Radius, U.Hex(0xff6a3a), MortarDelay);
+            Fx.Ring(point + Vector3.up * 0.1f, Progression.AbilityRadius(Abilities.Mortar), U.Hex(0xff6a3a), MortarDelay);
             for (float t = 0; t < MortarDelay; t += Time.deltaTime)
             {
                 shell.transform.position = Vector3.Lerp(point + Vector3.up * 30f, point, t / MortarDelay);
                 yield return null;
             }
             Destroy(shell);
-            Damage.Splash(point, Abilities.Mortar.Radius, Abilities.Mortar.Damage);
-            Fx.Burst(point + Vector3.up * 0.5f, Abilities.Mortar.Radius, U.Hex(0xffa040), 0.5f);
-            Fx.Burst(point + Vector3.up * 1.5f, Abilities.Mortar.Radius * 0.6f, U.Hex(0xfff0a0), 0.25f);
+            Damage.Splash(point, Progression.AbilityRadius(Abilities.Mortar), Progression.AbilityDamage(Abilities.Mortar));
+            Fx.Burst(point + Vector3.up * 0.5f, Progression.AbilityRadius(Abilities.Mortar), U.Hex(0xffa040), 0.5f);
+            Fx.Burst(point + Vector3.up * 1.5f, Progression.AbilityRadius(Abilities.Mortar) * 0.6f, U.Hex(0xfff0a0), 0.25f);
         }
 
         IEnumerator BombingRun(Vector3 start, Vector3 forward)
@@ -119,7 +126,7 @@ namespace OrcHordeFps
             for (int i = 0; i < StrafeBursts; i++)
             {
                 var p = start + forward * step * i;
-                Damage.Splash(p, Abilities.BombingRun.Width / 2, Abilities.BombingRun.Damage, struck);
+                Damage.Splash(p, Abilities.BombingRun.Width / 2, Progression.AbilityDamage(Abilities.BombingRun), struck);
                 Fx.Burst(p + Vector3.up * 0.5f, Abilities.BombingRun.Width / 2, U.Hex(0xffa040), 0.4f);
                 yield return new WaitForSeconds(StrafeSeconds / StrafeBursts);
             }

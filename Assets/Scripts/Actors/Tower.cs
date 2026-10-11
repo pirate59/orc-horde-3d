@@ -18,6 +18,8 @@ namespace OrcHordeFps
         const float BeamHeight = 1.1f;
 
         public TowerDef Def { get; private set; }
+        /// <summary>This tower's numbers with the skill tree applied.</summary>
+        public TowerStats Stats => Progression.Tower(Def);
 
         Transform head, muzzle;
         float cooldown, nextRetarget;
@@ -103,7 +105,7 @@ namespace OrcHordeFps
             if (Def.Kind == AttackKind.PulseAoe)
             {
                 head.Rotate(0, 90 * Time.deltaTime, 0);
-                if (cooldown <= 0f && AnyInRange()) { cooldown = Def.FireInterval; Pulse(); }
+                if (cooldown <= 0f && AnyInRange()) { cooldown = Stats.FireInterval; Pulse(); }
                 return;
             }
 
@@ -119,7 +121,7 @@ namespace OrcHordeFps
             if (to.sqrMagnitude > 0.01f)
                 head.rotation = Quaternion.RotateTowards(head.rotation, Quaternion.LookRotation(to), TurnDegreesPerSecond * Time.deltaTime);
             if (cooldown > 0f || Vector3.Angle(head.forward, to) > 12f) return;
-            cooldown = Def.FireInterval;
+            cooldown = Stats.FireInterval;
 
             switch (Def.Kind)
             {
@@ -142,7 +144,7 @@ namespace OrcHordeFps
         bool CanSee(Enemy e) => Def.SightPreferred ||
             !Physics.Linecast(muzzle.position, e.AimPoint, SightMask, QueryTriggerInteraction.Ignore);
 
-        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && FlatDistance(e.transform.position) <= Def.Range + e.Def.Radius;
+        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && FlatDistance(e.transform.position) <= Stats.Range + e.Def.Radius;
 
         bool AnyInRange()
         {
@@ -167,7 +169,7 @@ namespace OrcHordeFps
         void FireBullet()
         {
             var aim = Lead(target, Def.ProjectileSpeed);
-            Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, SightMask);
+            Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, Stats.Damage, SightMask);
             Fx.Burst(muzzle.position, 0.25f, Def.Color, 0.06f);
         }
 
@@ -175,7 +177,7 @@ namespace OrcHordeFps
         {
             var aim = Lead(target, Def.ProjectileSpeed);
             aim.y = target.transform.position.y;
-            Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Def.SplashRadius, Def.Damage, Def.Color);
+            Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Stats.Splash, Stats.Damage, Def.Color);
             Fx.Burst(muzzle.position, 0.5f, U.Hex(0xffd27a), 0.12f);
         }
 
@@ -188,7 +190,7 @@ namespace OrcHordeFps
             dir = Quaternion.Euler(0, Random.Range(-Def.AimDither, Def.AimDither) * Mathf.Rad2Deg, 0) * dir.normalized;
 
             var points = new List<Vector3> { muzzle.position, origin };
-            float budget = Def.Range * Def.PathBudgetMultiplier;
+            float budget = Stats.Range * Def.PathBudgetMultiplier;
             var p = origin;
             for (int bounce = 0; bounce <= 3 && budget > 0.05f; bounce++)
             {
@@ -198,7 +200,7 @@ namespace OrcHordeFps
                 foreach (var h in Physics.SphereCastAll(p, 0.15f, dir, len, Layers.EnemyMask, QueryTriggerInteraction.Ignore))
                 {
                     var e = h.collider.GetComponentInParent<Enemy>();
-                    if (e != null && struck.Add(e)) e.TakeDamage(Def.Damage, from: p);
+                    if (e != null && struck.Add(e)) e.TakeDamage(Stats.Damage, from: p);
                 }
                 p += dir * len;
                 points.Add(p);
@@ -217,27 +219,27 @@ namespace OrcHordeFps
             foreach (var e in Enemy.All.ToArray())
             {
                 if (!Valid(e)) continue;
-                e.Slow(Def.SlowFactor, Def.SlowDuration);
-                e.TakeDamage(Def.Damage, from: transform.position);
+                e.Slow(Def.SlowFactor, Stats.SlowDuration);
+                e.TakeDamage(Stats.Damage, from: transform.position);
             }
-            Fx.Ring(transform.position + Vector3.up * 0.6f, Def.Range, Def.Color, 0.45f);
+            Fx.Ring(transform.position + Vector3.up * 0.6f, Stats.Range, Def.Color, 0.45f);
         }
 
         void FireCone()
         {
-            float half = Def.ConeDegrees / 2f;
+            float half = Stats.ConeDegrees / 2f;
             foreach (var e in Enemy.All.ToArray())
             {
                 if (!Valid(e)) continue;
                 var to = e.transform.position - transform.position;
                 to.y = 0;
                 if (Vector3.Angle(head.forward, to) > half || !CanSee(e)) continue;
-                e.TakeDamage(Def.Damage, from: transform.position);
+                e.TakeDamage(Stats.Damage, from: transform.position);
             }
             for (int i = 0; i < 3; i++)
             {
                 var spread = Quaternion.Euler(Random.Range(-4f, 4f), Random.Range(-half, half) * 0.8f, 0);
-                var v = spread * head.forward * Def.Range * Random.Range(1.6f, 2.4f);
+                var v = spread * head.forward * Stats.Range * Random.Range(1.6f, 2.4f);
                 Fx.Puff(muzzle.position, v, Random.Range(0.3f, 0.6f),
                     Color.Lerp(U.Hex(0xffd23a), U.Hex(0xff4a1a), Random.value), 0.45f);
             }

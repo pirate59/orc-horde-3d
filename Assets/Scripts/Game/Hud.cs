@@ -49,10 +49,12 @@ namespace OrcHordeFps
             DrawTopBar(gm);
             DrawPlayer();
             DrawAbilities();
-            if (gm.Phase == Phase.Build) DrawBuildBar();
-            DrawCrosshair();
-            DrawBanner(gm);
-            if (gm.HelpOpen && !gm.Paused) DrawHelp();
+            if (gm.Phase == Phase.Build && !gm.ShopOpen) DrawBuildBar();
+            DrawCurrency(gm);
+            if (!gm.ShopOpen) DrawCrosshair();
+            if (!gm.ShopOpen) DrawBanner(gm);
+            if (gm.HelpOpen && !gm.Paused && !gm.ShopOpen) DrawHelp();
+            if (gm.ShopOpen && !gm.Paused) DrawShop(gm);
             if (gm.Paused) DrawPause(gm);
         }
 
@@ -75,10 +77,10 @@ namespace OrcHordeFps
                 $"Orcs: {Enemy.All.Count}   Kills: {gm.Kills}", label);
 
             GUI.Label(new Rect(r.xMax - S(200), r.y + S(36), S(60), S(30)), "Base", label);
-            Bar(new Rect(r.xMax - S(145), r.y + S(40), S(130), S(20)), gm.BaseHealth / (float)gm.Round.startingHealth,
-                gm.BaseHealth > gm.Round.startingHealth / 3 ? Mint : Red);
+            Bar(new Rect(r.xMax - S(145), r.y + S(40), S(130), S(20)), gm.BaseHealth / (float)gm.MaxBaseHealth,
+                gm.BaseHealth > gm.MaxBaseHealth / 3 ? Mint : Red);
             GUI.Label(new Rect(r.xMax - S(145), r.y + S(37), S(130), S(26)),
-                $"<color=#0d1014><b>{gm.BaseHealth}/{gm.Round.startingHealth}</b></color>", center);
+                $"<color=#0d1014><b>{gm.BaseHealth}/{gm.MaxBaseHealth}</b></color>", center);
 
             if (gm.Phase == Phase.Combat)
                 Bar(new Rect(r.x, r.yMax, r.width, S(5)), gm.SpawnProgress, Amber);
@@ -123,7 +125,7 @@ namespace OrcHordeFps
         {
             Box(r, Panel);
             float cd = ab.CooldownLeft(a);
-            if (cd > 0) Box(new Rect(r.x, r.y, r.width * cd / a.Cooldown, r.height), new Color(1, 1, 1, 0.08f));
+            if (cd > 0) Box(new Rect(r.x, r.y, r.width * cd / Progression.AbilityCooldown(a), r.height), new Color(1, 1, 1, 0.08f));
             string state = !ab.Usable ? "<color=#888>in rounds only</color>"
                 : cd > 0 ? $"<color=#ffb347>{cd:0.0}s</color>" : "<color=#5effc4>ready</color>";
             GUI.Label(new Rect(r.x + S(10), r.y + S(4), r.width, S(24)), $"<b>[{key}]</b> {a.Name}", small);
@@ -144,9 +146,11 @@ namespace OrcHordeFps
                 bool isWall = i == Towers.All.Length;
                 bool selected = isWall ? bc.Tool == BuildTool.Barricade : bc.SelectedTower == Towers.All[i] && bc.Tool == BuildTool.Tower;
                 string name = isWall ? Walls.Barricade.Name : Towers.All[i].Name;
+                bool locked = !isWall && !Progression.Tower(Towers.All[i]).Unlocked;
                 string count = isWall
-                    ? $"{Barricade.All.Count}/{Walls.Barricade.Limit}"
-                    : $"{BuildController.Placed(Towers.All[i])}/{Towers.All[i].Limit}";
+                    ? $"{Barricade.All.Count}/{Progression.WallLimit}"
+                    : locked ? "<color=#888>locked · B</color>"
+                    : $"{BuildController.Placed(Towers.All[i])}/{Progression.Tower(Towers.All[i]).Limit}";
                 Box(r, selected ? new Color(0.37f, 1f, 0.77f, 0.35f) : Panel);
                 Box(new Rect(r.x, r.y, r.width, S(4)), isWall ? Walls.Barricade.Color : Towers.All[i].Color);
                 GUI.Label(new Rect(r.x + S(8), r.y + S(8), r.width, S(22)), $"<b>[{i + 1}]</b> {name}", small);
@@ -157,7 +161,7 @@ namespace OrcHordeFps
             {
                 BuildTool.Tower => $"<b>{bc.SelectedTower.Name}</b> — {bc.SelectedTower.Description}",
                 BuildTool.Barricade => $"<b>Barricade</b> — {Walls.Barricade.Description}",
-                _ => "Pick a tower [1–5] or barricade [6]. Aim at a placed one and press X to remove it. G starts the round.",
+                _ => "Pick a tower [1–5] or barricade [6]. X removes the one you aim at. B opens the skill tree. G starts the round.",
             };
             GUI.Label(new Rect(Screen.width / 2f - S(420), y - S(56), S(840), S(26)), info, new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
             if (!string.IsNullOrEmpty(bc.Hint))
@@ -227,7 +231,7 @@ namespace OrcHordeFps
                 "<b>Between rounds</b>\n" +
                 "1–5 towers · 6 barricade · R rotate\n" +
                 "Left click place · X / right click remove\n" +
-                "0 put away · <b>G start round</b>\n\n" +
+                "0 put away · <b>B skill tree</b> · <b>G start round</b>\n\n" +
                 "Towers stand on the raised ground beside the path, one per hex. Barricades go on the path and reroute the horde.\n\n" +
                 "H hide help · Esc pause / choose map", small);
         }
@@ -238,7 +242,7 @@ namespace OrcHordeFps
             var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
             if (gm.MapMenuOpen) { DrawMapMenu(gm, btn); return; }
 
-            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(135), S(320), S(270));
+            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(160), S(320), S(320));
             Box(r, Panel);
             GUI.Label(new Rect(r.x, r.y + S(10), r.width, S(40)), "Paused", banner);
             float y = r.y + S(60);
@@ -251,6 +255,7 @@ namespace OrcHordeFps
             if (Button("Resume")) gm.SetPaused(false);
             if (Button("Choose map")) gm.MapMenuOpen = true;
             if (Button("Restart map")) gm.RestartMap();
+            if (Button("Reset campaign")) gm.ResetCampaign();
             if (Button("Quit"))
             {
 #if UNITY_EDITOR
@@ -259,6 +264,80 @@ namespace OrcHordeFps
                 Application.Quit();
 #endif
             }
+        }
+
+        void DrawCurrency(GameManager gm)
+        {
+            var r = new Rect(Screen.width - S(240), S(12), S(220), S(70));
+            Box(r, Panel);
+            GUI.Label(new Rect(r.x + S(14), r.y + S(6), r.width, S(30)), $"<b>{Progression.Currency:N0}</b> currency", label);
+            string sub = gm.Phase == Phase.Combat ? $"+{gm.RoundCurrency:N0} this round" : "B: skill tree";
+            GUI.Label(new Rect(r.x + S(14), r.y + S(36), r.width, S(26)), $"<color=#bbb>{sub}</color>", small);
+        }
+
+        Vector2 shopScroll;
+
+        /// <summary>
+        /// The skill tree as a list, in the tree's own order. Each row buys the
+        /// node's next level; rows still waiting on a prerequisite say which.
+        /// </summary>
+        void DrawShop(GameManager gm)
+        {
+            Box(new Rect(0, 0, Screen.width, Screen.height), new Color(0, 0, 0, 0.5f));
+            var r = new Rect(Screen.width / 2f - S(460), S(96), S(920), Screen.height - S(130));
+            Box(r, Panel);
+            GUI.Label(new Rect(r.x + S(20), r.y + S(10), r.width, S(40)), "<b>Skill tree</b>", big);
+            GUI.Label(new Rect(r.xMax - S(320), r.y + S(16), S(300), S(30)), $"<b>{Progression.Currency:N0}</b> currency to spend", label);
+
+            var nodes = Progression.Offered;
+            float rowH = S(54), headH = S(34);
+            int groups = 0;
+            for (int i = 0; i < nodes.Count; i++)
+                if (i == 0 || Progression.Group(nodes[i]) != Progression.Group(nodes[i - 1])) groups++;
+            var view = new Rect(r.x + S(16), r.y + S(60), r.width - S(32), r.height - S(120));
+            shopScroll = GUI.BeginScrollView(view, shopScroll, new Rect(0, 0, view.width - S(20), rowH * nodes.Count + headH * groups));
+            var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(15 * scale), richText = true };
+            float y = 0;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var n = nodes[i];
+                if (i == 0 || Progression.Group(n) != Progression.Group(nodes[i - 1]))
+                {
+                    GUI.Label(new Rect(S(4), y + S(6), S(400), S(26)), $"<b><color=#5effc4>{Progression.Group(n).ToUpper()}</color></b>", small);
+                    y += headH;
+                }
+                var row = new Rect(0, y, view.width - S(20), rowH - S(4));
+                y += rowH;
+                int level = Progression.Level(n.id);
+                var next = Progression.NextLevel(n);
+                bool ready = Progression.PrerequisitesMet(n);
+                Box(row, level > 0 ? new Color(0.37f, 1f, 0.77f, 0.08f) : new Color(1, 1, 1, 0.03f));
+                GUI.Label(new Rect(row.x + S(10), row.y + S(4), S(330), S(24)), $"<b>{n.name}</b>  <color=#bbb>{level}/{n.levels.Length}</color>", small);
+                string detail = next == null ? "<color=#5effc4>Complete</color>"
+                    : ready ? $"<color=#ccc>{next.label}: {next.description}</color>"
+                    : $"<color=#888>Needs {Needs(n)}</color>";
+                GUI.Label(new Rect(row.x + S(10), row.y + S(26), row.width - S(200), S(24)), detail, small);
+                if (next == null) continue;
+                GUI.enabled = Progression.CanBuy(n);
+                if (GUI.Button(new Rect(row.xMax - S(170), row.y + S(8), S(160), rowH - S(20)), $"Buy · {next.cost:N0}", btn))
+                    Progression.Buy(n);
+                GUI.enabled = true;
+            }
+            GUI.EndScrollView();
+            GUI.Label(new Rect(r.x + S(20), r.yMax - S(46), r.width - S(40), S(30)),
+                "<color=#bbb>Kills pay currency win or lose; a win adds a bonus, doubled the first time. B or Esc closes.</color>", small);
+        }
+
+        static string Needs(SkillNode n)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (var p in n.prerequisites)
+                if (Progression.Level(p.nodeId) < p.minimumLevel)
+                {
+                    var other = System.Array.Find(Progression.Tree.nodes, x => x.id == p.nodeId);
+                    parts.Add($"{other?.name ?? p.nodeId} {p.minimumLevel}");
+                }
+            return string.Join(", ", parts);
         }
 
         Vector2 mapScroll;

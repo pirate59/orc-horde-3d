@@ -12,7 +12,8 @@ namespace OrcHordeFps
         public static PlayerWeapon I { get; private set; }
 
         public const int MagazineSize = 30;
-        const float Damage = 24f, FireInterval = 0.1f, ReloadSeconds = 1.5f, Range = 150f, Spread = 0.006f;
+        public const float Damage = 24f, FireInterval = 0.1f, ReloadSeconds = 1.5f;
+        const float Range = 150f, Spread = 0.006f;
 
         public int Ammo { get; private set; } = MagazineSize;
         public bool Reloading => Time.time < reloadDone;
@@ -87,7 +88,7 @@ namespace OrcHordeFps
 
         void Fire(PlayerController pc)
         {
-            nextShot = Time.time + FireInterval;
+            nextShot = Time.time + FireInterval / Progression.RifleFireRate;
             Ammo--;
             var ray = pc.AimRay;
             ray.direction = (ray.direction + Random.insideUnitSphere * Spread).normalized;
@@ -100,7 +101,7 @@ namespace OrcHordeFps
                 if (e != null)
                 {
                     bool head = hit.collider.GetComponent<EnemyHead>() != null;
-                    e.TakeDamage(Damage, head, ray.origin);
+                    e.TakeDamage(Damage * Progression.RifleDamage, head, ray.origin);
                     HitMarkerUntil = Time.time + 0.12f;
                     LastHitWasHead = head;
                     Fx.Burst(hit.point, 0.25f, U.Hex(0x7a1010), 0.15f);

@@ -16,10 +16,26 @@ namespace OrcHordeFps
 
         /// <summary>
         /// DEVIATION: Orc Horde's pressure budgets field hundreds of orcs a round,
-        /// which a top-down sim can afford and a crowd of 3D agents cannot. Every
-        /// budget is scaled by this, keeping the original mix and pacing.
+        /// which a top-down sim can afford and a crowd of 3D agents cannot, and
+        /// grow some seventy-fold over the first four maps. Here a round's budget
+        /// is <see cref="HordeScale"/> of the original at Quarry Road's opener and
+        /// grows as its <see cref="HordeGrowth"/> power after that: the same
+        /// curve, flattened, keeping each round's mix and pacing.
         /// </summary>
-        public const float HordeScale = 0.12f;
+        public const float HordeScale = 0.12f, HordeGrowth = 0.85f;
+        /// <summary>The budget the scale is pinned to: Quarry Road's first round.</summary>
+        const float ReferenceBudget = 270f;
+
+        /// <summary>The budget this game fields for one of Orc Horde's.</summary>
+        public static float FieldedBudget(float original) =>
+            HordeScale * ReferenceBudget * Mathf.Pow(Mathf.Max(original, 1f) / ReferenceBudget, HordeGrowth);
+
+        /// <summary>
+        /// What each orc pays relative to its Orc Horde reward: the original budget
+        /// over the fielded one, so a round pays what the full horde would have
+        /// and the skill tree's prices keep their pacing.
+        /// </summary>
+        public float RewardScale => Round.pressureBudget / FieldedBudget(Round.pressureBudget);
         const int MaxAlive = 110;
         /// <summary>Spawning stops short of the round's end so its tail can arrive.</summary>
         const float SpawnWindowFraction = 0.85f;
@@ -34,11 +50,17 @@ namespace OrcHordeFps
         public Phase Phase { get; private set; }
         public float RoundTime { get; private set; }
         public int BaseHealth { get; private set; }
+        /// <summary>The round's base health plus the skill tree's fortification.</summary>
+        public int MaxBaseHealth => Round.startingHealth + Progression.BaseHealthBonus;
         public int Kills { get; private set; }
-        public int Currency { get; private set; }
+        /// <summary>Currency earned by kills this round, paid out when it ends.</summary>
+        public float RoundCurrency { get; private set; }
+        public Progression.RoundReward? LastReward { get; private set; }
+        public string LastLossReason { get; private set; } = "";
         public bool Paused { get; private set; }
         public bool HelpOpen { get; set; } = true;
         public bool MapMenuOpen { get; set; }
+        public bool ShopOpen { get; set; }
 
         public string Banner { get; private set; } = "";
         public float BannerUntil { get; private set; }
@@ -72,7 +94,8 @@ namespace OrcHordeFps
         {
             Phase = Phase.Build;
             RoundTime = 0;
-            BaseHealth = Round.startingHealth;
+            BaseHealth = MaxBaseHealth;
+            RoundCurrency = 0;
             ClearHorde();
             foreach (var b in Barricade.All) b.Restore();
             PlayerHealth.I?.Revive();
@@ -83,8 +106,11 @@ namespace OrcHordeFps
         {
             if (Phase != Phase.Build) return;
             Phase = Phase.Combat;
+            ShopOpen = false;
+            LastReward = null;
+            Kills = 0;
             RoundTime = 0;
-            budget = Round.pressureBudget * HordeScale;
+            budget = FieldedBudget(Round.pressureBudget);
             spent = pool = 0;
             nextSegment = 0;
             spentByType.Clear();
@@ -110,13 +136,15 @@ namespace OrcHordeFps
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (Input.GetKeyDown(KeyCode.Escape) && !ShopOpen)
             {
                 if (MapMenuOpen) MapMenuOpen = false;
                 else SetPaused(!Paused);
             }
             if (Input.GetKeyDown(KeyCode.H)) HelpOpen = !HelpOpen;
             if (Paused) return;
+            if ((Input.GetKeyDown(KeyCode.B) || Input.GetKeyDown(KeyCode.Tab)) && Phase != Phase.Combat) ShopOpen = !ShopOpen;
+            if (ShopOpen && Input.GetKeyDown(KeyCode.Escape)) ShopOpen = false;
 
             if (Input.GetKeyDown(KeyCode.G)) Continue();
             if (Phase == Phase.Combat) TickCombat(Time.deltaTime);
@@ -224,7 +252,7 @@ namespace OrcHordeFps
         public void OnKilled(Enemy e)
         {
             Kills++;
-            Currency += e.Def.Reward;
+            if (Phase == Phase.Combat) RoundCurrency += e.Def.Reward * RewardScale;
         }
 
         public void OnBreach(Enemy e)
@@ -236,20 +264,31 @@ namespace OrcHordeFps
             else if (BaseHealth <= 0) Lose($"The {Map.endpoint.name} has fallen.");
         }
 
+        /// <summary>Pays the round out and says what it paid.</summary>
+        string Settle(bool victory)
+        {
+            var reward = Progression.Settle(Map, RoundIndex, RoundCurrency, victory);
+            LastReward = reward;
+            RoundCurrency = 0;
+            string bonus = reward.Completion > 0 ? $" + {reward.Completion} victory{(reward.FirstClear ? " (first clear ×2)" : "")}" : "";
+            return $"Earned {reward.Kills}{bonus}.  B: skill tree.";
+        }
+
         void Win()
         {
+            string pay = Settle(true);
             if (RoundIndex >= Map.rounds.Length - 1)
             {
                 Phase = Phase.MapHeld;
                 Session.MarkHeld(Map.id);
                 var nextMap = Session.NextMap(Map.id);
                 string onward = nextMap != null ? $"Press G to march on to {Session.Catalog.Get(nextMap).name}." : "Press G to play it again.";
-                Announce($"{Map.name} held!  {onward}", U.Hex(0x5effc4), 30f);
+                Announce($"{Map.name} held!  {pay}  {onward}", U.Hex(0x5effc4), 30f);
             }
             else
             {
                 Phase = Phase.Won;
-                Announce($"Round {RoundIndex + 1} won!  Press G for the next round.", U.Hex(0x5effc4), 30f);
+                Announce($"Round {RoundIndex + 1} won!  {pay}  G: next round.", U.Hex(0x5effc4), 30f);
             }
             for (int i = 0; i < 8; i++)
                 Fx.Burst(Map.Base + new Vector3(Random.Range(-6f, 6f), Random.Range(6f, 12f), Random.Range(-6f, 6f)),
@@ -259,8 +298,10 @@ namespace OrcHordeFps
         void Lose(string reason)
         {
             Phase = Phase.Lost;
+            LastLossReason = reason;
+            string pay = Settle(false);
             ClearHorde();
-            Announce($"{reason}  Press G to retry the round — your layout is kept.", U.Hex(0xff4a4a), 30f);
+            Announce($"{reason}  {pay}  G: retry, layout kept.", U.Hex(0xff4a4a), 30f);
         }
 
         void ClearHorde()
@@ -276,6 +317,14 @@ namespace OrcHordeFps
         }
 
         public void RestartMap() => Session.Play(Map.id);
+
+        /// <summary>A fresh campaign: no currency, no skills, only the first map open.</summary>
+        public void ResetCampaign()
+        {
+            Progression.Reset();
+            Session.ResetUnlocks();
+            Session.Play(Session.Catalog.campaign[0]);
+        }
 
         void OnDestroy()
         {

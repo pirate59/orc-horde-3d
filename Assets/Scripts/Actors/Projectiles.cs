@@ -9,14 +9,14 @@ namespace OrcHordeFps
         float damage, radius, life;
         int mask;
 
-        public static void Fire(Vector3 from, Vector3 dir, TowerDef def, int sightMask)
+        public static void Fire(Vector3 from, Vector3 dir, TowerDef def, float damage, int sightMask)
         {
             var go = Shapes.Prim(PrimitiveType.Sphere, null, from, new Vector3(0.09f, 0.09f, 0.6f), Mats.Unlit(def.Color * 1.4f));
             go.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             go.transform.rotation = Quaternion.LookRotation(dir);
             var p = go.AddComponent<Projectile>();
             p.velocity = dir * def.ProjectileSpeed;
-            p.damage = def.Damage;
+            p.damage = damage;
             p.radius = def.ProjectileRadius;
             p.life = def.ProjectileLifetime;
             p.mask = sightMask | Layers.EnemyMask | (1 << Layers.Road) | (1 << Layers.BuildGround);

@@ -3,11 +3,9 @@ using UnityEngine;
 namespace OrcHordeFps
 {
     /// <summary>
-    /// Base towers, ported from orc-horde src/content/towers.ts.
-    ///
-    /// Deployment limits differ: Orc Horde unlocks everything past the Machine
-    /// Gun through the skill tree, and there is no tree here yet, so each tower
-    /// starts with a small allowance instead.
+    /// Base towers, ported from orc-horde src/content/towers.ts. These are the
+    /// unupgraded numbers: the skill tree's unlocks, capacity and multipliers are
+    /// applied on top by <see cref="Progression.Tower"/>, never written back here.
     /// </summary>
     public static class Towers
     {
@@ -15,7 +13,7 @@ namespace OrcHordeFps
         {
             Id = "machine_gun", Name = "Machine Gun",
             Description = "Rapid single-target fire. Every bullet stops at the first thing it hits.",
-            Limit = 3, Footprint = U.M(24), Damage = 6, Range = U.M(260), FireInterval = U.Sec(120),
+            UnlockedByDefault = true, Limit = 3, Footprint = U.M(24), Damage = 6, Range = U.M(260), FireInterval = U.Sec(120),
             TargetFirst = true, Sight = SightBlockers.RockAndWalls, Kind = AttackKind.Projectile,
             ProjectileSpeed = U.M(1300), ProjectileRadius = U.M(4), SplashRadius = 0,
             ProjectileLifetime = U.Sec(700), Color = U.Hex(0xc2a33e),
@@ -25,7 +23,7 @@ namespace OrcHordeFps
         {
             Id = "cannon", Name = "Cannon",
             Description = "Slow splash artillery. Lobs over barricades. Strong against packs.",
-            Limit = 2, Footprint = U.M(28), Damage = 10, Range = U.M(280), FireInterval = U.Sec(900),
+            Limit = 0, Footprint = U.M(28), Damage = 10, Range = U.M(280), FireInterval = U.Sec(900),
             TargetFirst = true, Sight = SightBlockers.Rock, Kind = AttackKind.Projectile, Lobbed = true,
             ProjectileSpeed = U.M(700), ProjectileRadius = U.M(8), SplashRadius = U.M(55),
             ProjectileLifetime = U.Sec(2500), Color = U.Hex(0x4a7ea8),
@@ -35,7 +33,7 @@ namespace OrcHordeFps
         {
             Id = "laser", Name = "Laser",
             Description = "Piercing beam that ricochets off rock and barricades. Fires without a clear line.",
-            Limit = 1, Footprint = U.M(26), Damage = 2.5f, Range = U.M(300), FireInterval = U.Sec(220),
+            Limit = 0, Footprint = U.M(26), Damage = 2.5f, Range = U.M(300), FireInterval = U.Sec(220),
             TargetFirst = true, Sight = SightBlockers.RockAndWalls, SightPreferred = true,
             Kind = AttackKind.Hitscan, PathBudgetMultiplier = 2f, AimDither = 0.026f,
             Color = U.Hex(0x3ec9a7),
@@ -45,7 +43,7 @@ namespace OrcHordeFps
         {
             Id = "arc_tower", Name = "Arc Tower",
             Description = "Pulses a full circle, slowing everything it touches to half speed.",
-            Limit = 1, Footprint = U.M(26), Damage = 1, Range = U.M(200), FireInterval = U.Sec(500),
+            Limit = 0, Footprint = U.M(26), Damage = 1, Range = U.M(200), FireInterval = U.Sec(500),
             TargetFirst = false, Sight = SightBlockers.Rock, Kind = AttackKind.PulseAoe,
             SlowFactor = 0.5f, SlowDuration = U.Sec(900), Color = U.Hex(0x8e7cc3),
         };
@@ -54,7 +52,7 @@ namespace OrcHordeFps
         {
             Id = "flame_thrower", Name = "Flame Thrower",
             Description = "Sprays a cone of fire. Devastating close up, useless at a distance.",
-            Limit = 1, Footprint = U.M(27), Damage = 3.5f, Range = U.M(170), FireInterval = U.Sec(140),
+            Limit = 0, Footprint = U.M(27), Damage = 3.5f, Range = U.M(170), FireInterval = U.Sec(140),
             TargetFirst = false, Sight = SightBlockers.RockAndWalls, Kind = AttackKind.ConeAoe,
             ConeDegrees = 70, Color = U.Hex(0xd9743f),
         };
