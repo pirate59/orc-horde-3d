@@ -75,6 +75,14 @@ Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cel
 
 The head hitbox rides the head bone, and each orc gets a slight random tint. A full 110-orc horde holds 60 fps.
 
+**Biome variants.** Every orc dresses for the map's biome (`OrcBiomes`), built once per type per biome:
+- **Snow:** fur mantles, collars, hats and cuffs, warmer wool, white snow settled on shoulders, helms and weapons, snow-caked boots, and breath puffing in the cold.
+- **Canyon:** sand scarves and head-wraps, sun-bleached cloth, dust on the shoulders, red dust up the legs.
+- **Grassland:** leaf camouflage, vine wraps, feathers, moss, mud.
+- **Quarry dirt:** belt lanterns, candle caps, a coil of rope, stone dust, deep mud.
+
+The settled cover and the leg grime are shader overlays, so towers wear them too, more lightly.
+
 **Towers and rifle.** `TowerModels` builds each tower from the same solids, shaped by how it fights. Each turns and tilts to aim, and sweeps slowly when idle:
 - **Machine Gun:** rotary barrels spin up; belt feed; casings fly out.
 - **Cannon:** elevates to lob, kicks back, smokes.

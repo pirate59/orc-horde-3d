@@ -28,17 +28,18 @@ namespace OrcHordeFps
             public Weapon Weapon;
         }
 
-        static readonly Dictionary<EnemyDef, (Mesh, Vector3[], Design)> cache = new Dictionary<EnemyDef, (Mesh, Vector3[], Design)>();
+        static readonly Dictionary<(EnemyDef, string), (Mesh, Vector3[], Design)> cache = new Dictionary<(EnemyDef, string), (Mesh, Vector3[], Design)>();
 
-        /// <summary>The shared mesh, bone layout and design for a type.</summary>
-        public static (Mesh mesh, Vector3[] layout, Design design) Get(EnemyDef def)
+        /// <summary>The shared mesh, bone layout and design for a type, dressed for a biome (see <see cref="OrcBiomes"/>).</summary>
+        public static (Mesh mesh, Vector3[] layout, Design design) Get(EnemyDef def, string biome = "dirt")
         {
-            if (cache.TryGetValue(def, out var hit)) return hit;
+            if (cache.TryGetValue((def, biome), out var hit)) return hit;
             var d = For(def);
+            OrcBiomes.Palette(d, biome);
             var layout = OrcRig.Layout(d.Build);
-            var mesh = Build(def.Id, d, layout);
-            cache[def] = (mesh, layout, d);
-            return cache[def];
+            var mesh = Build(def.Id + "-" + biome, d, layout, biome);
+            cache[(def, biome)] = (mesh, layout, d);
+            return cache[(def, biome)];
         }
 
         static Color C(uint rgb) => U.Hex(rgb);
@@ -126,7 +127,7 @@ namespace OrcHordeFps
 
         // ------------------------------------------------------------------ build
 
-        static Mesh Build(string name, Design d, Vector3[] p)
+        static Mesh Build(string name, Design d, Vector3[] p, string biome)
         {
             var m = new OrcMesh();
             float w = d.Build.Bulk, hs = d.Build.HeadSize;
@@ -176,6 +177,7 @@ namespace OrcHordeFps
             foreach (var s in new[] { -1f, 1f }) Arm(m, d, p, s, w);
             foreach (var s in new[] { -1f, 1f }) Leg(m, d, p, s, w);
             Gear(m, d, p, w);
+            OrcBiomes.Dress(m, d, p, biome);
 
             var layoutPoses = OrcRig.BindPoses(p);
             return m.Build("Orc " + name, layoutPoses);

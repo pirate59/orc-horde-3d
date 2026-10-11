@@ -514,7 +514,7 @@ namespace OrcHordeFps
                 e.Die(killed: false);
                 yield return null;
             }
-            Log($"gallery: done, vertices fodder={OrcDesigns.Get(Enemies.Fodder).mesh.vertexCount} boss={OrcDesigns.Get(Enemies.SiegeBoss).mesh.vertexCount}");
+            Log($"gallery: done on {gm.Map.biome}, vertices fodder={OrcDesigns.Get(Enemies.Fodder, gm.Map.biome).mesh.vertexCount} boss={OrcDesigns.Get(Enemies.SiegeBoss, gm.Map.biome).mesh.vertexCount}");
         }
 
         /// <summary>
@@ -643,7 +643,7 @@ namespace OrcHordeFps
                 }
                 yield return null;
             }
-            Log($"stress: {gm.Map.id} {Perf()} vertices={Enemy.All.Count * OrcDesigns.Get(Enemies.Fodder).mesh.vertexCount} (approx)");
+            Log($"stress: {gm.Map.id} {Perf()} vertices={Enemy.All.Count * OrcDesigns.Get(Enemies.Fodder, gm.Map.biome).mesh.vertexCount} (approx)");
         }
 
         /// <summary>A screenshot, waiting for it to be taken: the capture happens at the end of the frame, so anything changed before then would be in it.</summary>

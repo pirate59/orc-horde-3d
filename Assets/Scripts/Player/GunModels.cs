@@ -98,7 +98,22 @@ namespace OrcHordeFps
             var go = new GameObject(key);
             go.transform.SetParent(parent, false);
             go.AddComponent<MeshFilter>().sharedMesh = m.Build(key);
-            go.AddComponent<MeshRenderer>().sharedMaterial = TowerModels.Material;
+            go.AddComponent<MeshRenderer>().sharedMaterial = Material;
+        }
+
+        static Material material;
+
+        /// <summary>The tower material without the biome's overlays: a gun in hand stays clean.</summary>
+        static Material Material
+        {
+            get
+            {
+                if (material != null) return material;
+                material = new Material(TowerModels.Material);
+                material.SetFloat("_CoverAmount", 0);
+                material.SetFloat("_GrimeAmount", 0);
+                return material;
+            }
         }
     }
 }

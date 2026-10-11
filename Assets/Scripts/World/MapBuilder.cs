@@ -232,11 +232,12 @@ namespace OrcHordeFps
             }
             var light = new GameObject("Beacon light").AddComponent<Light>();
             light.transform.SetParent(yard, false);
+            // A glow about the yard, not a floodlight: anything brighter dyes the orcs mint as they arrive.
             light.transform.localPosition = new Vector3(0, 6, 0);
             light.type = LightType.Point;
             light.color = U.Hex(0x5effc4);
-            light.range = 20;
-            light.intensity = 3f;
+            light.range = 10;
+            light.intensity = 1.2f;
         }
 
         /// <summary>

@@ -10,7 +10,7 @@ namespace OrcHordeFps
     /// </summary>
     public sealed class OrcAnimator : MonoBehaviour
     {
-        static Material material;
+        static readonly System.Collections.Generic.Dictionary<string, Material> materials = new System.Collections.Generic.Dictionary<string, Material>();
 
         /// <summary>True while hitting a wall or the player: swing the weapon.</summary>
         public bool Attacking { get; set; }
@@ -27,11 +27,12 @@ namespace OrcHordeFps
         Vector3[] rest;
         float phase, speed, flinch, attackT, attackWeight, holdWeight, dieT = -1f, fallSign, stride, lean;
         Vector3 lastPos;
-        bool twoHanded, shield;
+        bool twoHanded, shield, breath;
+        float nextBreath;
 
-        public static OrcAnimator Create(EnemyDef def, Transform enemy)
+        public static OrcAnimator Create(EnemyDef def, Transform enemy, string biome)
         {
-            var (mesh, layout, design) = OrcDesigns.Get(def);
+            var (mesh, layout, design) = OrcDesigns.Get(def, biome);
             var model = new GameObject("Model").transform;
             model.SetParent(enemy, false);
             float scale = def.Height / OrcRig.ModelHeight;
@@ -42,7 +43,7 @@ namespace OrcHordeFps
             smr.sharedMesh = mesh;
             smr.bones = bones;
             smr.rootBone = bones[(int)OrcBone.Hips];
-            smr.sharedMaterial = Material;
+            smr.sharedMaterial = MaterialFor(biome);
             // Room for a swinging maul and a fall, so the body is never culled while on screen.
             var b = mesh.bounds;
             b.Expand(1.2f);
@@ -72,21 +73,22 @@ namespace OrcHordeFps
             a.twoHanded = w == OrcDesigns.Weapon.Hammer || w == OrcDesigns.Weapon.Maul || w == OrcDesigns.Weapon.RuneHammer || w == OrcDesigns.Weapon.WarAxe;
             a.shield = w == OrcDesigns.Weapon.MaceAndShield;
             a.lean = 4f + 14f * design.Build.Hunch;
+            a.breath = OrcBiomes.For(biome).Breath;
+            a.nextBreath = Time.time + Random.Range(0.5f, 2.5f);
             return a;
         }
 
-        static Material Material
+        /// <summary>The hide-detailed orc material with the biome's overlays: one per biome.</summary>
+        static Material MaterialFor(string biome)
         {
-            get
-            {
-                if (material != null) return material;
-                material = new Material(Shader.Find("OrcHorde/Orc"));
-                material.SetTexture("_Detail", Mats.Tex("skin"));
-                material.SetTexture("_DetailNormal", Mats.Tex("skin_n"));
-                material.SetTextureScale("_Detail", new Vector2(2, 2));
-                material.enableInstancing = false;
-                return material;
-            }
+            if (materials.TryGetValue(biome, out var material) && material != null) return material;
+            material = new Material(Shader.Find("OrcHorde/Orc"));
+            material.SetTexture("_Detail", Mats.Tex("skin"));
+            material.SetTexture("_DetailNormal", Mats.Tex("skin_n"));
+            material.SetTextureScale("_Detail", new Vector2(2, 2));
+            OrcBiomes.Apply(material, biome);
+            materials[biome] = material;
+            return material;
         }
 
         public string DebugState =>
@@ -121,6 +123,17 @@ namespace OrcHordeFps
             flinch = Mathf.MoveTowards(flinch, 0f, dt * 5f);
 
             Pose(Mathf.Clamp01(speed / Mathf.Max(def.Speed, 0.5f)) * (1f - holdWeight));
+
+            // In the cold, a puff of breath from the jaw every few seconds, quicker when running.
+            if (breath && Time.time >= nextBreath)
+            {
+                nextBreath = Time.time + Random.Range(1.6f, 2.8f) / (1f + speed * 0.3f);
+                var jaw = bones[(int)OrcBone.Jaw];
+                var mouth = jaw.TransformPoint(new Vector3(0, 0.02f, 0.14f));
+                for (int i = 0; i < 3; i++)
+                    Fx.Puff(mouth, transform.forward * Random.Range(0.4f, 0.8f) + Vector3.up * 0.25f + Random.insideUnitSphere * 0.15f,
+                        Random.Range(0.06f, 0.12f) * def.Height, new Color(0.92f, 0.95f, 1f, 0.35f), Random.Range(0.6f, 0.9f));
+            }
         }
 
         void Set(OrcBone b, float x, float y = 0, float z = 0) => bones[(int)b].localRotation = Quaternion.Euler(x, y, z);

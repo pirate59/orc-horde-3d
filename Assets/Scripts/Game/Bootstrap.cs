@@ -14,6 +14,8 @@ namespace OrcHordeFps
             var grid = new HexGrid(map);
 
             SetUpLighting(map);
+            // Towers wear the biome too: snow on their tops, dust or mud about their bases.
+            OrcBiomes.Apply(TowerModels.Material, map.biome, 0.8f);
             var world = new GameObject("World").transform;
             MapBuilder.Build(map, grid, world);
             MapBuilder.BakeNavMesh(map);

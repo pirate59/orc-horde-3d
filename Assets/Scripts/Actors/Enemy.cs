@@ -119,7 +119,7 @@ namespace OrcHordeFps
 
         void BuildBody()
         {
-            orc = OrcAnimator.Create(Def, transform);
+            orc = OrcAnimator.Create(Def, transform, GameManager.I.Map.biome);
 
             // The body hitbox is a plain capsule on the orc's root; the head has its own, riding the head bone.
             var hitbox = new GameObject("Body hitbox");
@@ -139,7 +139,21 @@ namespace OrcHordeFps
             tint = new Color(shade * (1 + warmth), shade, shade * (1 - warmth));
             block.SetColor("_Tint", tint);
             block.SetColor("_Flash", Color.black);
+            block.SetFloat("_Scale", Def.Height / OrcRig.ModelHeight);
+            feetY = transform.position.y;
+            block.SetFloat("_FeetY", feetY);
             foreach (var r in bodyRenderers) r.SetPropertyBlock(block);
+        }
+
+        float feetY;
+
+        /// <summary>The grime overlay climbs from the feet: keep it with them when they climb onto a bridge.</summary>
+        void LateUpdate()
+        {
+            if (Mathf.Abs(transform.position.y - feetY) < 0.05f || block == null) return;
+            feetY = transform.position.y;
+            block.SetFloat("_FeetY", feetY);
+            foreach (var r in bodyRenderers) if (r != null) r.SetPropertyBlock(block);
         }
 
         /// <summary>
