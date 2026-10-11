@@ -115,7 +115,12 @@ namespace OrcHordeFps
             nextThink = Time.time + Random.value;
             nextCharge = Time.time + def.ChargeInterval;
             All.Add(this);
+            if (def.IsBoss) Sfx.At("boss_roar", transform.position, 1f, Voice);
         }
+
+        /// <summary>Bigger orcs speak lower.</summary>
+        float Voice => Mathf.Clamp(1.8f / Def.Height, 0.55f, 1.2f);
+        float nextStrikeSound;
 
         void BuildBody()
         {
@@ -210,6 +215,7 @@ namespace OrcHordeFps
             Health -= dealt;
             flashUntil = Time.time + 0.06f;
             orc?.Flinch(Mathf.Clamp01(dealt / Mathf.Max(MaxHealth, 1f) * 6f + 0.15f));
+            if (Health > 0 && Random.value < 0.2f) Sfx.At("orc_grunt", AimPoint, 0.8f, Voice);
             if (Health <= 0f) Die(killed: true);
             return dealt;
         }
@@ -226,6 +232,7 @@ namespace OrcHordeFps
                 Fx.Burst(AimPoint, Def.Radius * 1.5f + 0.2f, new Color(0.35f, 0.05f, 0.04f), 0.35f);
                 if (Def.SplitInto != null)
                     for (int i = 0; i < Def.SplitCount; i++) Spawn(Def.SplitInto, transform.position, 1.2f, Toughness);
+                Sfx.At("orc_death", AimPoint, 1f, Voice);
                 LeaveCorpse();
                 return;
             }
@@ -281,6 +288,7 @@ namespace OrcHordeFps
                     if ((other.transform.position - transform.position).sqrMagnitude < Def.HealRadius * Def.HealRadius)
                         other.Heal(Def.HealPerPulse * Toughness);
                 Fx.Ring(transform.position + Vector3.up * 0.2f, Def.HealRadius, U.Hex(0x4fbf7a), 0.5f);
+                Sfx.At("heal", transform.position);
             }
 
             if (Time.time >= nextThink)
@@ -380,6 +388,7 @@ namespace OrcHordeFps
                     for (int i = 0; i < count; i++) Spawn(def, transform.position, 3f);
                 Fx.Ring(transform.position + Vector3.up * 0.3f, 6f, U.Hex(0xffd166), 0.8f);
                 GameManager.I.Announce($"The {Def.Name} calls its war band!", U.Hex(0xffd166), 3f);
+                Sfx.At("boss_roar", transform.position, 1f, Voice);
             }
 
             if (Def.ChargeInterval > 0 && Time.time >= nextCharge)
@@ -387,6 +396,7 @@ namespace OrcHordeFps
                 nextCharge = Time.time + Def.ChargeInterval;
                 windupEnds = Time.time + Def.ChargeWindup;
                 chargeEnds = windupEnds + Def.ChargeDuration;
+                Sfx.At("boss_roar", transform.position, 1f, Voice * 1.1f);
             }
             if (Time.time < chargeEnds && Time.time >= windupEnds)
             {
@@ -429,6 +439,8 @@ namespace OrcHordeFps
         void Think()
         {
             if (wallTarget != null && !wallTarget.Standing) wallTarget = null;
+            // Now and then, a grunt from the crowd.
+            if (Random.value < 0.025f) Sfx.At("orc_grunt", AimPoint, 0.6f, Voice);
 
             if (wallTarget == null)
             {
@@ -501,12 +513,19 @@ namespace OrcHordeFps
             {
                 wallTarget.Damage(Def.WallDps);
                 Fx.Burst(contact + Vector3.up, 3f, U.Hex(0xff8a2a), 0.5f);
+                Sfx.At("explosion", contact);
                 Die(killed: false);
                 return;
             }
 
             float dps = Def.WallDps > 0 ? Def.WallDps : SealedRoadDps;
             wallTarget.Damage(dps * Time.deltaTime);
+            // A blow lands with each swing of the weapon.
+            if (Time.time >= nextStrikeSound)
+            {
+                nextStrikeSound = Time.time + 0.85f;
+                Sfx.At("wall_hit", contact, 1f, Voice);
+            }
             if (!wallTarget.Standing)
             {
                 wallTarget = null;
@@ -525,6 +544,11 @@ namespace OrcHordeFps
             {
                 player.TakeDamage(PlayerDpsPerMetre * Mathf.Max(Def.Radius, 0.3f) * 3f * Time.deltaTime);
                 hitPlayerThisFrame = true;
+                if (Time.time >= nextStrikeSound)
+                {
+                    nextStrikeSound = Time.time + 0.85f;
+                    Sfx.At("orc_swing", AimPoint, 1f, Voice);
+                }
             }
         }
 

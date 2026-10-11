@@ -17,6 +17,7 @@ namespace OrcHordeFps
 
         CharacterController controller;
         float pitch, yaw, verticalSpeed;
+        float stepDistance, airTime;
 
         // Tactical view: an overhead camera for laying out the line between rounds.
         const float TacticalPanSpeed = 28f, TacticalTurnSpeed = 90f, TacticalMinHeight = 12f, TacticalMaxHeight = 110f;
@@ -169,6 +170,22 @@ namespace OrcHordeFps
 
             move.y = verticalSpeed;
             controller.Move(move * Time.deltaTime);
+            Footsteps(new Vector2(move.x, move.z).magnitude, speed > WalkSpeed);
+        }
+
+        /// <summary>A step every stride, on the sound of the map's ground; a thump on landing from a jump.</summary>
+        void Footsteps(float speed, bool sprinting)
+        {
+            if (!controller.isGrounded) { airTime += Time.deltaTime; return; }
+            if (airTime > 0.3f) Sfx.UI("land");
+            airTime = 0;
+            if (speed < 0.5f) { stepDistance = 0; return; }
+            stepDistance += speed * Time.deltaTime;
+            float stride = sprinting ? 2.4f : 1.7f;
+            if (stepDistance < stride) return;
+            stepDistance = 0;
+            string surface = GameManager.I.Map.biome switch { "snow" => "step_snow", "grassland" => "step_grass", _ => "step_gravel" };
+            Sfx.UI(surface, sprinting ? 1f : 0.75f);
         }
 
         /// <summary>The ray from the centre of the screen, or from the mouse in the tactical view.</summary>

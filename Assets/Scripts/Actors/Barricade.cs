@@ -135,6 +135,7 @@ namespace OrcHordeFps
             box.enabled = false;
             obstacle.enabled = false;
             Fx.Burst(transform.position + Vector3.up, 2.5f, Def.Color, 0.5f);
+            Sfx.At("wall_break", transform.position);
         }
 
         public void Restore()

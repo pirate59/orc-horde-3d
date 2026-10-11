@@ -107,6 +107,7 @@ namespace OrcHordeFps
         {
             var shell = Shapes.Prim(PrimitiveType.Sphere, null, point + Vector3.up * 30f, Vector3.one * 0.5f, Mats.Lit(U.Hex(0x22262b)));
             Fx.Ring(point + Vector3.up * 0.1f, Progression.AbilityRadius(Abilities.Mortar), U.Hex(0xff6a3a), MortarDelay);
+            Sfx.At("mortar_whistle", point);
             for (float t = 0; t < MortarDelay; t += Time.deltaTime)
             {
                 shell.transform.position = Vector3.Lerp(point + Vector3.up * 30f, point, t / MortarDelay);
@@ -114,6 +115,7 @@ namespace OrcHordeFps
             }
             Destroy(shell);
             Damage.Splash(point, Progression.AbilityRadius(Abilities.Mortar), Progression.AbilityDamage(Abilities.Mortar));
+            Sfx.At("explosion", point, 1.2f, 0.85f);
             Fx.Burst(point + Vector3.up * 0.5f, Progression.AbilityRadius(Abilities.Mortar), U.Hex(0xffa040), 0.5f);
             Fx.Burst(point + Vector3.up * 1.5f, Progression.AbilityRadius(Abilities.Mortar) * 0.6f, U.Hex(0xfff0a0), 0.25f);
         }
@@ -127,6 +129,7 @@ namespace OrcHordeFps
             {
                 var p = start + forward * step * i;
                 Damage.Splash(p, Abilities.BombingRun.Width / 2, Progression.AbilityDamage(Abilities.BombingRun), struck);
+                if (i % 2 == 0) Sfx.At("explosion", p, 0.9f);
                 Fx.Burst(p + Vector3.up * 0.5f, Abilities.BombingRun.Width / 2, U.Hex(0xffa040), 0.4f);
                 yield return new WaitForSeconds(StrafeSeconds / StrafeBursts);
             }

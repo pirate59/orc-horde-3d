@@ -81,7 +81,9 @@ namespace OrcHordeFps
             gun.gameObject.SetActive(!building);
 
             // Aim with the right button: not while building, reloading or dead.
+            bool wasAiming = aimHeld;
             aimHeld = !building && pc.InputLive && !Reloading && (Input.GetMouseButton(1) || debugAim);
+            if (aimHeld && !wasAiming) Sfx.UI("ads_up");
             Aim = Mathf.MoveTowards(Aim, aimHeld ? 1f : 0f, Time.deltaTime / AimTime);
             if (!pc.Tactical) pc.Cam.fieldOfView = Mathf.Lerp(HipFov, AimFov, Ease(Aim));
 
@@ -115,6 +117,7 @@ namespace OrcHordeFps
         {
             reloadDone = Time.time + ReloadSeconds;
             reloadPending = true;
+            Sfx.UI("rifle_reload");
         }
 
         /// <summary>
@@ -171,11 +174,13 @@ namespace OrcHordeFps
                     e.TakeDamage(Damage * Progression.RifleDamage, head, ray.origin);
                     HitMarkerUntil = Time.time + 0.12f;
                     LastHitWasHead = head;
+                    Sfx.UI(head ? "headshot" : "hit");
                     Fx.Burst(hit.point, 0.25f, U.Hex(0x7a1010), 0.15f);
                 }
                 else Fx.Burst(hit.point, 0.15f, U.Hex(0xd8c8a0), 0.12f);
             }
 
+            Sfx.UI("rifle_shot");
             Fx.Line(muzzle.position, end, U.Hex(0xfff0b0), 0.025f, 0.05f);
             Fx.Burst(muzzle.position, 0.09f, U.Hex(0xffe08a), 0.04f);
             flash.intensity = 4f;

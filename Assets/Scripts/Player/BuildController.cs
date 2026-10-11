@@ -31,6 +31,9 @@ namespace OrcHordeFps
         /// <summary>The placed tower or barricade under the aim, when no tool is held.</summary>
         public Component Inspected { get; private set; }
 
+        /// <summary>Set while a saved layout is put back, so it goes down without a sound per piece.</summary>
+        public static bool Quiet;
+
         /// <summary>Raised whenever something is placed, moved or removed.</summary>
         public static event Action LayoutChanged;
 
@@ -62,6 +65,7 @@ namespace OrcHordeFps
         /// <summary>Picks up a tool; picking up the one already held puts it away.</summary>
         void Select(BuildTool tool, TowerDef tower = null, bool toggle = true)
         {
+            Sfx.UI("ui_click");
             bool same = toggle && tool == Tool && tower == SelectedTower;
             Tool = same ? BuildTool.None : tool;
             SelectedTower = same ? null : tower;
@@ -153,6 +157,7 @@ namespace OrcHordeFps
                 if (problem == null && Input.GetMouseButtonDown(0)) PlaceBarricade(anchor, wallAxis);
             }
             Shapes.Tint(ghost, GhostValid ? okMat : badMat);
+            if (!GhostValid && Input.GetMouseButtonDown(0)) Sfx.UI("ui_invalid");
         }
 
         void Report(string problem, string ok)
@@ -216,6 +221,7 @@ namespace OrcHordeFps
             if (TowerProblem(def, cell) != null) return null;
             var t = Tower.Create(def, TowerPosition(cell));
             t.Cell = cell;
+            if (!Quiet) Sfx.At("ui_place", t.transform.position);
             Fx.Burst(t.transform.position + Vector3.up, 1.5f, U.Hex(0x5effc4), 0.3f);
             LayoutChanged?.Invoke();
             return t;
@@ -225,6 +231,7 @@ namespace OrcHordeFps
         {
             if (BarricadeProblem(anchor, axis, ignorePlayer) != null) return null;
             var b = Barricade.Create(Walls.Barricade, GameManager.I.Grid, anchor, axis);
+            if (!Quiet) Sfx.At("ui_place", b.transform.position);
             Fx.Burst(b.transform.position + Vector3.up, 1.5f, U.Hex(0x5effc4), 0.3f);
             LayoutChanged?.Invoke();
             return b;
@@ -236,6 +243,7 @@ namespace OrcHordeFps
             else if (placed is Barricade b) { Barricade.All.Remove(b); Destroy(b.gameObject); }
             else return;
             Fx.Burst(placed.transform.position + Vector3.up, 1f, U.Hex(0xff6a3a), 0.25f);
+            if (!Quiet) Sfx.At("ui_remove", placed.transform.position);
             LayoutChanged?.Invoke();
         }
 

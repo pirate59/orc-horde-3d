@@ -216,6 +216,7 @@ namespace OrcHordeFps
         {
             var aim = Lead(target, Def.ProjectileSpeed);
             Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, Stats.Damage, SightMask);
+            Sfx.At("mg_shot", muzzle.position);
             Fx.Burst(muzzle.position, 0.28f, U.Hex(0xffd27a), 0.05f);
             // Spent brass, out of the right side and onto the ground.
             if (rig.Ejector != null && Random.value < 0.6f)
@@ -228,6 +229,7 @@ namespace OrcHordeFps
             var aim = Lead(target, Def.ProjectileSpeed);
             aim.y = target.transform.position.y;
             Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Stats.Splash, Stats.Damage, Def.Color);
+            Sfx.At("cannon_fire", muzzle.position);
             Fx.Burst(muzzle.position, 0.6f, U.Hex(0xffd27a), 0.1f);
             kick = 0.24f;
             // A gout of smoke from the muzzle, drifting up.
@@ -268,6 +270,7 @@ namespace OrcHordeFps
             }
             Fx.Polyline(points.ToArray(), Def.Color, 0.07f, 0.09f);
             Fx.Polyline(points.ToArray(), Color.white, 0.025f, 0.06f);
+            Sfx.At("laser_zap", muzzle.position);
             for (int i = 2; i < points.Count; i++) Fx.Burst(points[i], 0.25f, Def.Color, 0.12f);
             flash = 1f;
         }
@@ -283,6 +286,7 @@ namespace OrcHordeFps
                 if (e.Targetable) Fx.Lightning(muzzle.position, e.AimPoint, Def.Color);
             }
             Fx.Ring(transform.position + Vector3.up * 0.4f, Stats.Range, Def.Color, 0.45f);
+            Sfx.At("arc_zap", muzzle.position);
             flash = 1f;
         }
 
@@ -298,6 +302,7 @@ namespace OrcHordeFps
                 e.TakeDamage(Stats.Damage, from: transform.position);
                 e.Burn(0.8f);
             }
+            Sfx.At("flame_burst", muzzle.position);
             // The jet: many small, see-through tongues, hotter (yellower) nearer the nozzle.
             for (int i = 0; i < 6; i++)
             {

@@ -158,6 +158,7 @@ namespace OrcHordeFps
                 warnings.Add(((boss.atMs - boss.warningMs) / 1000f, $"{def.Name} approaching {Map.Spawn(boss.spawn).name}!"));
             }
             Announce($"{Round.name}  —  here they come", U.Hex(0xffb347));
+            Sfx.UI("horn_wave", 0.8f);
         }
 
         void Update()
@@ -220,6 +221,7 @@ namespace OrcHordeFps
                 if (RoundTime >= warnings[i].at)
                 {
                     Announce(warnings[i].text, U.Hex(0xff4a4a), 5f);
+                    Sfx.UI("horn_boss", 0.9f);
                     warnings.RemoveAt(i);
                 }
             for (int i = scheduled.Count - 1; i >= 0; i--)
@@ -285,6 +287,7 @@ namespace OrcHordeFps
         {
             if (Phase != Phase.Combat) return;
             BaseHealth = Mathf.Max(0, BaseHealth - e.Def.BreachDamage);
+            Sfx.UI("breach", 0.7f);
             Fx.Burst(Map.Base + Vector3.up * 2, 3f, U.Hex(0xff4a4a), 0.4f);
             if (e.Def.BreachLosesRound) Lose($"The {e.Def.Name} reached the {Map.endpoint.name}.");
             else if (BaseHealth <= 0) Lose($"The {Map.endpoint.name} has fallen.");
@@ -303,6 +306,7 @@ namespace OrcHordeFps
         void Win()
         {
             string pay = Settle(true);
+            Sfx.UI("round_won", 0.8f);
             if (RoundIndex >= Map.rounds.Length - 1)
             {
                 Phase = Phase.MapHeld;
@@ -325,6 +329,7 @@ namespace OrcHordeFps
         {
             Phase = Phase.Lost;
             LastLossReason = reason;
+            Sfx.UI("round_lost", 0.8f);
             string pay = Settle(false);
             ClearHorde();
             Announce($"{reason}  {pay}  G: retry, layout kept.", U.Hex(0xff4a4a), 30f);

@@ -69,6 +69,7 @@ namespace OrcHordeFps
             transform.position = Vector3.Lerp(from, to, k) + Vector3.up * (4f * apex * k * (1f - k));
             if (k < 1f) return;
             Damage.Splash(to, splash, damage);
+            Sfx.At("explosion", to, 0.8f);
             // A short, hot fireball, a ring along the ground showing the splash's reach, and smoke.
             Fx.Burst(to + Vector3.up * 0.4f, splash * 0.45f, U.Hex(0xffc060), 0.22f);
             Fx.Ring(to + Vector3.up * 0.1f, splash, U.Hex(0xff8a30), 0.35f);

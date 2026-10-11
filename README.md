@@ -93,6 +93,18 @@ The settled cover and the leg grime are shader overlays, so towers wear them too
 
 Orcs show what is happening to them: a flash on a hit, an orange flicker and embers while burning, a blue shimmer while slowed. `GunModels` builds the rifle, which has recoil, flash, ejected brass, and a reload in which the magazine drops out and a fresh one seats.
 
+## Sound
+
+Every sound is synthesised by Orc Horde → Bake Sounds (`Assets/Editor/SoundBaker.cs`) and written to `Assets/Resources/Audio` as WAV. Drop in a recording with the same name to replace one; numbered files (`orc_grunt_1`, `_2` ...) are variants picked at random. There are 69 files:
+- **Weapons:** rifle shot, reload and sight, hit and headshot ticks; the machine gun, cannon, explosions, laser, arc and flame
+- **Orcs:** grunts and deaths whose pitch follows size, weapon swings, boss roars, blows on barricades and their collapse, the Shaman's heal
+- **The round:** war horns for the wave and for bosses, the base breach alarm, win and loss stings, the mortar's whistle
+- **Interface:** placing, removing, invalid, buying and clicking
+- **Player:** footsteps for gravel, snow and grass, and landing
+- **Wind:** a seamless loop for each biome
+
+`Sfx` plays them positioned in the world, with pitch variation, and limits how many of each sound play at once, how soon one may repeat, and how far it carries, so a full horde stays readable. Esc → Volume sets the master level.
+
 ## Layout
 
 | Path | Purpose |
@@ -106,6 +118,8 @@ Orcs show what is happening to them: a flash on a hit, an orange flicker and emb
 | `Assets/Scripts/Game` | Bootstrap, round loop, HUD, smoke test |
 | `Assets/Editor/ProjectSetup.cs` | Writes the scene, layers and build settings |
 | `Assets/Editor/TextureBaker.cs` | Bakes the textures |
+| `Assets/Editor/SoundBaker.cs` | Synthesises the sounds |
+| `Assets/Resources/Audio` | Baked sounds (generated) |
 | `Assets/Shaders` | Terrain and orc shaders |
 
 ## Smoke tests

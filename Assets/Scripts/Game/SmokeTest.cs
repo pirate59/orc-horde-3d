@@ -724,6 +724,7 @@ namespace OrcHordeFps
         /// </summary>
         static int PlaceLayout(GameManager gm)
         {
+            BuildController.Quiet = true;
             BuildController.ClearLayout();
             var grid = gm.Grid;
             var cells = new List<Vector2Int>();
@@ -769,6 +770,12 @@ namespace OrcHordeFps
 
         static void Log(string line)
         {
+            if (line == "done" && Sfx.Requested.Count > 0)
+            {
+                var names = new List<string>(Sfx.Requested.Keys);
+                names.Sort();
+                Log("sounds: " + string.Join(" ", names.ConvertAll(n => $"{n}={(Sfx.Played.TryGetValue(n, out var p) ? p : 0)}/{Sfx.Requested[n]}")));
+            }
             Debug.Log("[SmokeTest] " + line);
             File.AppendAllText(Path.Combine(outDir, "summary.txt"), line + "\n");
         }

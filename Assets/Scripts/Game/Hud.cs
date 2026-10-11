@@ -254,7 +254,7 @@ namespace OrcHordeFps
             var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
             if (gm.MapMenuOpen) { DrawMapMenu(gm, btn); return; }
 
-            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(185), S(320), S(370));
+            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(210), S(320), S(420));
             Box(r, Panel);
             GUI.Label(new Rect(r.x, r.y + S(10), r.width, S(40)), "Paused", banner);
             float y = r.y + S(60);
@@ -265,6 +265,10 @@ namespace OrcHordeFps
                 return pressed;
             }
             if (Button("Resume")) gm.SetPaused(false);
+            GUI.Label(new Rect(r.x + S(40), y, S(90), S(30)), "Volume", label);
+            float vol = GUI.HorizontalSlider(new Rect(r.x + S(130), y + S(10), r.width - S(170), S(20)), Sfx.Volume, 0f, 1f);
+            if (!Mathf.Approximately(vol, Sfx.Volume)) Sfx.Volume = vol;
+            y += S(50);
             if (Button("Choose map")) gm.MapMenuOpen = true;
             if (Button("Restart map")) gm.RestartMap();
             if (gm.Phase == Phase.Build && Button("Clear layout")) { BuildController.ClearLayout(); gm.SetPaused(false); }
@@ -414,10 +418,10 @@ namespace OrcHordeFps
                 if (next == null) continue;
                 GUI.enabled = Progression.CanBuy(n);
                 if (GUI.Button(new Rect(row.xMax - S(170), row.y + S(8), S(160), rowH - S(20)), $"Buy · {next.cost:N0}", btn))
-                    Progression.Buy(n);
+                    Sfx.UI(Progression.Buy(n) ? "ui_buy" : "ui_invalid");
                 // Masteries run to forty levels, so they can be bought five at a time, as in Orc Horde.
                 if (n.mastery && GUI.Button(new Rect(row.xMax - S(250), row.y + S(8), S(72), rowH - S(20)), "×5", btn))
-                    Progression.Buy(n, 5);
+                    Sfx.UI(Progression.Buy(n, 5) > 0 ? "ui_buy" : "ui_invalid");
                 GUI.enabled = true;
             }
             GUI.EndScrollView();

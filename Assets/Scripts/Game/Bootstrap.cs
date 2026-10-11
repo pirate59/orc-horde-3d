@@ -28,6 +28,7 @@ namespace OrcHordeFps
             gm.gameObject.AddComponent<Hud>();
             gm.gameObject.AddComponent<RoutePreview>();
             Layouts.Restore(map.id);
+            Sfx.Loop("wind_" + (map.biome ?? "dirt"), 0.3f);
             SmokeTest.AttachIfRequested();
         }
 

@@ -49,6 +49,7 @@ namespace OrcHordeFps
             var saved = JsonUtility.FromJson<Saved>(json);
             int placed = 0;
             restoring = true;
+            BuildController.Quiet = true;
             try
             {
                 foreach (var t in saved.towers)
@@ -59,7 +60,7 @@ namespace OrcHordeFps
                 foreach (var w in saved.walls)
                     if (BuildController.PlaceBarricade(new Vector2Int(w.column, w.row), w.axis, ignorePlayer: true) != null) placed++;
             }
-            finally { restoring = false; }
+            finally { restoring = false; BuildController.Quiet = false; }
             return placed;
         }
 
