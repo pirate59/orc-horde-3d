@@ -8,6 +8,8 @@ namespace OrcHordeFps
         public static PlayerController I { get; private set; }
 
         const float WalkSpeed = 6f, SprintSpeed = 9.5f, JumpSpeed = 5.5f, Gravity = 18f;
+        /// <summary>Walking speed while aiming down the sight, as a share of a walk. No sprinting.</summary>
+        const float AimMoveFactor = 0.5f;
         const float EyeHeight = 1.65f;
 
         public float Sensitivity = 2f;
@@ -73,6 +75,7 @@ namespace OrcHordeFps
             Tactical = on;
             if (on)
             {
+                Cam.fieldOfView = PlayerWeapon.HipFov;
                 tacticalFocus = transform.position;
                 tacticalYaw = yaw;
                 Cam.transform.SetParent(null, true);
@@ -143,14 +146,18 @@ namespace OrcHordeFps
             if (!InputLive) return;
             if (Tactical) { UpdateTactical(); return; }
 
-            yaw += Input.GetAxisRaw("Mouse X") * Sensitivity;
-            pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * Sensitivity, -85f, 85f);
+            // Turn as fast on screen when zoomed: scale the mouse by how much the view has narrowed.
+            float look = Sensitivity * Cam.fieldOfView / PlayerWeapon.HipFov;
+            yaw += Input.GetAxisRaw("Mouse X") * look;
+            pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * look, -85f, 85f);
             transform.rotation = Quaternion.Euler(0, yaw, 0);
             Cam.transform.localRotation = Quaternion.Euler(pitch, 0, 0);
 
             var input = new Vector3(Input.GetAxisRaw("Horizontal"), 0, Input.GetAxisRaw("Vertical"));
             input = Vector3.ClampMagnitude(input, 1f);
-            float speed = Input.GetKey(KeyCode.LeftShift) ? SprintSpeed : WalkSpeed;
+            float aim = PlayerWeapon.I != null ? PlayerWeapon.I.Aim : 0f;
+            float speed = Input.GetKey(KeyCode.LeftShift) && aim < 0.5f ? SprintSpeed : WalkSpeed;
+            speed *= Mathf.Lerp(1f, AimMoveFactor, aim);
             var move = transform.TransformDirection(input) * speed;
 
             if (controller.isGrounded)

@@ -596,6 +596,17 @@ namespace OrcHordeFps
             pc.SetView(Quaternion.LookRotation(fwd).eulerAngles.y, 4f);
             yield return new WaitForSeconds(0.5f);
             yield return Snap("armory-rifle-idle");
+            Hud.Hidden = false;
+            PlayerWeapon.I.DebugAim(true);
+            yield return new WaitForSeconds(0.4f);
+            Log($"armory: aim={PlayerWeapon.I.Aim:F2} fov={pc.Cam.fieldOfView:F1}");
+            yield return Snap("armory-rifle-ads");
+            for (int i = 0; i < 3; i++) { PlayerWeapon.I.DebugFire(); yield return new WaitForSeconds(0.1f); }
+            PlayerWeapon.I.DebugFire();
+            yield return Snap("armory-rifle-ads-fire");
+            PlayerWeapon.I.DebugAim(false);
+            yield return new WaitForSeconds(0.4f);
+            Hud.Hidden = true;
             for (int i = 0; i < 4; i++) { PlayerWeapon.I.DebugFire(); yield return new WaitForSeconds(0.1f); }
             PlayerWeapon.I.DebugFire();
             yield return Snap("armory-rifle-fire");

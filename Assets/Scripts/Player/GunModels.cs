@@ -62,7 +62,9 @@ namespace OrcHordeFps
             // The sight's reticle, floating in the open frame: glowing, with no shadow.
             Part(gun, "rifle-reticle", m =>
             {
-                m.Paint(0, mint, 0.9f, 2.5f).Torus(new Vector3(0, 0.104f, -0.0265f), Vector3.forward, 0.008f, 0.0012f, 16, 4);
+                // A fine ring with a centre dot, glowing mint rather than white-hot.
+                m.Paint(0, mint, 0.9f, 1.1f).Torus(new Vector3(0, 0.104f, -0.0265f), Vector3.forward, 0.0065f, 0.0006f, 20, 4);
+                m.Sphere(new Vector3(0, 0.104f, -0.0265f), 0.0009f, 6, 4);
             });
 
             var mag = new GameObject("Magazine").transform;

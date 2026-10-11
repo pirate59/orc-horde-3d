@@ -183,7 +183,8 @@ namespace OrcHordeFps
         {
             var w = PlayerWeapon.I;
             float cx = Screen.width / 2f, cy = Screen.height / 2f;
-            var c = new Color(1, 1, 1, 0.85f);
+            // Down the sight, the holo reticle does the job: the crosshair fades away.
+            var c = new Color(1, 1, 1, 0.85f * (1f - (w != null ? w.Aim : 0f)));
             Box(new Rect(cx - S(10), cy - S(1), S(7), S(2)), c);
             Box(new Rect(cx + S(3), cy - S(1), S(7), S(2)), c);
             Box(new Rect(cx - S(1), cy - S(10), S(2), S(7)), c);
@@ -235,7 +236,7 @@ namespace OrcHordeFps
                 $"<b>{GameManager.I.Map.name.ToUpper()}</b>\n" +
                 $"{GameManager.I.Map.description}\n\n" +
                 "<b>Move</b>  WASD · Shift sprint · Space jump\n" +
-                "<b>Shoot</b>  Left mouse · R reload · headshots ×2\n" +
+                "<b>Shoot</b>  Left mouse · <b>right mouse aims</b> · R reload · headshots ×2\n" +
                 "<b>Abilities</b>  hold Q / E to aim, release\n\n" +
                 "<b>Between rounds</b>\n" +
                 "1–5 towers · 6 barricade · R rotate\n" +

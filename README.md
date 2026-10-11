@@ -12,6 +12,7 @@ Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it open
 | --- | --- |
 | Move | WASD, Shift to sprint, Space to jump |
 | Shoot | Left mouse, R to reload. Headshots do ×2 |
+| Aim down the sight | Hold right mouse: zoomed view through the holo reticle, tighter grouping, less recoil, slower movement, no sprint |
 | Abilities | Hold Q (Mortar) or E (Bombing Run) to aim, release to fire |
 | Build (between rounds) | 1–5 for towers, 6 for barricade, R to turn a barricade, left click to place, F to pick up and move, X or right click to remove, 0 to put away |
 | Tactical view (between rounds) | M. WASD pan, Q/E turn, wheel zoom, place with the mouse, T to drop in on foot there |
