@@ -352,8 +352,10 @@ namespace OrcHordeFps
             {
                 var s = t.Stats;
                 string dps = $"{s.Damage / s.FireInterval:0.#} damage/s";
-                text = $"<b>{t.Def.Name}</b>\n{dps} · range {s.Range:0.#} m · every {s.FireInterval:0.00}s" +
+                string height = Fx.HeightNote(t.RangeFactor);
+                text = $"<b>{t.Def.Name}</b>\n{dps} · range {t.Range:0.#} m · every {s.FireInterval:0.00}s" +
                        (s.Splash > 0 ? $" · splash {s.Splash:0.#} m" : "") +
+                       (height.Length > 0 ? "\n" + height : "") +
                        "\n<color=#bbb>F move · X remove</color>";
             }
             else if (bc.Inspected is Barricade b)

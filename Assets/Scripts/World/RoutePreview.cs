@@ -88,7 +88,23 @@ namespace OrcHordeFps
                 if (NavMesh.SamplePosition(from, out var start, 6f, NavMesh.AllAreas) &&
                     NavMesh.CalculatePath(start.position, gm.Map.Base, NavMesh.AllAreas, path))
                 {
-                    foreach (var c in path.corners) r.Points.Add(c + Vector3.up * Lift);
+                    // Corners only mark turns, so a straight run between them would cut
+                    // through a rise in the road. Lay the line along the land in short steps.
+                    var corners = path.corners;
+                    for (int i = 0; i < corners.Length; i++)
+                    {
+                        if (i > 0)
+                        {
+                            int steps = Mathf.CeilToInt(Vector3.Distance(corners[i - 1], corners[i]) / 2f);
+                            for (int k = 1; k < steps; k++)
+                            {
+                                var p = Vector3.Lerp(corners[i - 1], corners[i], k / (float)steps);
+                                p.y = Mathf.Max(p.y, Relief.Ground(p));
+                                r.Points.Add(p + Vector3.up * Lift);
+                            }
+                        }
+                        r.Points.Add(corners[i] + Vector3.up * Lift);
+                    }
                     r.Sealed = path.status != NavMeshPathStatus.PathComplete;
                 }
                 else r.Sealed = true;

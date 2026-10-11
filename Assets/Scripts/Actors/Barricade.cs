@@ -44,7 +44,7 @@ namespace OrcHordeFps
         public static (Vector3 position, Quaternion rotation) Pose(HexGrid grid, Vector2Int anchor, int axis)
         {
             var d = grid.AxisDirection(axis);
-            return (grid.Center(anchor), Quaternion.LookRotation(d) * Quaternion.Euler(0, -90, 0));
+            return (Relief.RoadSpot(anchor), Quaternion.LookRotation(d) * Quaternion.Euler(0, -90, 0));
         }
 
         public static Barricade Create(WallDef def, HexGrid grid, Vector2Int anchor, int axis)

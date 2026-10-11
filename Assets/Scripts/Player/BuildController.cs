@@ -27,6 +27,10 @@ namespace OrcHordeFps
         public BuildTool Tool { get; private set; }
         public TowerDef SelectedTower { get; private set; }
         public bool GhostValid { get; private set; }
+        /// <summary>The cell the tower ghost last stood on, and the range factor height gives it there.</summary>
+        Vector2Int ghostCell = new Vector2Int(int.MinValue, 0);
+        TowerDef ghostDef;
+        float ghostFactor = 1f;
         public string Hint { get; private set; } = "";
         /// <summary>The placed tower or barricade under the aim, when no tool is held.</summary>
         public Component Inspected { get; private set; }
@@ -142,9 +146,18 @@ namespace OrcHordeFps
                 var pos = TowerPosition(cell);
                 ghost.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(facing.sqrMagnitude > 0.01f ? facing : Vector3.forward));
                 rangeRing.enabled = true;
-                Fx.SetCircle(rangeRing, pos + Vector3.up * 0.05f, Progression.Tower(SelectedTower).Range, 64);
+                if (cell != ghostCell || SelectedTower != ghostDef)
+                {
+                    ghostDef = SelectedTower;
+                    // Height changes reach, so the ring and the note are worked out per spot.
+                    ghostCell = cell;
+                    ghostFactor = Relief.RangeFactor(cell, SelectedTower.Range);
+                    Fx.SetGroundCircle(rangeRing, pos, Progression.Tower(SelectedTower).Range * ghostFactor, 64);
+                }
                 problem = TowerProblem(SelectedTower, cell);
-                Report(problem, $"Left click: place {SelectedTower.Name}  ({Placed(SelectedTower)}/{Progression.Tower(SelectedTower).Limit})");
+                string height = Fx.HeightNote(ghostFactor);
+                Report(problem, $"Left click: place {SelectedTower.Name}  ({Placed(SelectedTower)}/{Progression.Tower(SelectedTower).Limit})" +
+                    (height.Length > 0 ? "   " + height : ""));
                 if (problem == null && Input.GetMouseButtonDown(0)) PlaceTower(SelectedTower, cell);
             }
             else
@@ -166,8 +179,7 @@ namespace OrcHordeFps
             Hint = problem ?? ok;
         }
 
-        public static Vector3 TowerPosition(Vector2Int cell) =>
-            GameManager.I.Grid.Center(cell) + Vector3.up * MapBuilder.TowerGroundHeight;
+        public static Vector3 TowerPosition(Vector2Int cell) => Relief.TowerSpot(cell);
 
         /// <summary>Why a tower can't stand on this cell, or null if it can. As in Orc Horde: one per tower-ground cell, at its centre.</summary>
         public static string TowerProblem(TowerDef def, Vector2Int cell)

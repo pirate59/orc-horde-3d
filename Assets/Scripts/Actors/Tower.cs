@@ -36,11 +36,16 @@ namespace OrcHordeFps
                 rangeRing = Fx.NewLine(go.transform, c, 0.05f);
                 rangeRing.enabled = false;
             }
-            if (show && !rangeRing.enabled) Fx.SetCircle(rangeRing, transform.position + Vector3.up * 0.06f, Stats.Range, 64);
+            if (show && !rangeRing.enabled) Fx.SetGroundCircle(rangeRing, transform.position, Range, 64);
             rangeRing.enabled = show;
         }
         /// <summary>This tower's numbers with the skill tree applied.</summary>
         public TowerStats Stats => Progression.Tower(Def);
+
+        /// <summary>What height adds to (or takes from) its reach: see <see cref="Relief.RangeFactor"/>.</summary>
+        public float RangeFactor { get; private set; } = 1f;
+        /// <summary>Its reach: the upgraded range, stretched or shrunk by the ground it stands on.</summary>
+        public float Range => Stats.Range * RangeFactor;
 
         Transform head, muzzle;
         TowerRig rig;
@@ -66,6 +71,8 @@ namespace OrcHordeFps
             t.muzzle = t.rig.Muzzle;
             t.idleSeed = Random.value * 10f;
             t.glowBlock = new MaterialPropertyBlock();
+            if (GameManager.I != null && GameManager.I.Grid != null)
+                t.RangeFactor = Relief.RangeFactor(GameManager.I.Grid.CellAt(position), def.Range);
             var col = go.AddComponent<CapsuleCollider>();
             col.radius = def.Footprint;
             col.height = 2f;
@@ -123,7 +130,7 @@ namespace OrcHordeFps
         {
             if (rig.Pitch == null || target == null) return;
             float pitch;
-            if (Def.Lobbed) pitch = -(12f + 33f * Mathf.Clamp01(FlatDistance(target.transform.position) / Stats.Range));
+            if (Def.Lobbed) pitch = -(12f + 33f * Mathf.Clamp01(FlatDistance(target.transform.position) / Range));
             else
             {
                 var d = target.AimPoint - rig.Pitch.position;
@@ -185,12 +192,17 @@ namespace OrcHordeFps
             return d.magnitude;
         }
 
-        int SightMask => Def.Sight == SightBlockers.Rock ? Layers.RockMask : Layers.RockMask | Layers.WallMask;
+        /// <summary>What blocks its view: rock, for some the barricades too, and always the land, so an orc over a crest is hidden.</summary>
+        int SightMask => Layers.TerrainMask | (Def.Sight == SightBlockers.Rock ? Layers.RockMask : Layers.RockMask | Layers.WallMask);
 
         bool CanSee(Enemy e) => Def.SightPreferred ||
             !Physics.Linecast(muzzle.position, e.AimPoint, SightMask, QueryTriggerInteraction.Ignore);
 
-        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && FlatDistance(e.transform.position) <= Stats.Range + e.Def.Radius;
+        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && FlatDistance(e.transform.position) <= Range + e.Def.Radius;
+
+        /// <summary>Within reach but behind the land: for the smoke test's count of blind spots.</summary>
+        public bool HiddenByLand(Enemy e) => Valid(e) &&
+            Physics.Linecast(muzzle.position, e.AimPoint, Layers.TerrainMask, QueryTriggerInteraction.Ignore);
 
         bool AnyInRange()
         {
@@ -238,29 +250,41 @@ namespace OrcHordeFps
                     Random.Range(0.4f, 0.8f), new Color(0.55f, 0.53f, 0.5f, 0.7f), Random.Range(0.6f, 1.1f));
         }
 
+        /// <summary>
+        /// The laser: down to chest height, then flat along the ground, piercing
+        /// every orc on its line and glancing off rock and barricades. On the
+        /// hills it keeps to chest height over the land rather than one level,
+        /// so it runs up and down the road instead of into it.
+        /// </summary>
         void FireBeam()
         {
             struck.Clear();
-            var origin = new Vector3(muzzle.position.x, BeamHeight, muzzle.position.z);
-            var dir = target.transform.position - origin;
+            var flat = new Vector3(muzzle.position.x, 0, muzzle.position.z);
+            var dir = target.transform.position - flat;
             dir.y = 0;
             dir = Quaternion.Euler(0, Random.Range(-Def.AimDither, Def.AimDither) * Mathf.Rad2Deg, 0) * dir.normalized;
 
-            var points = new List<Vector3> { muzzle.position, origin };
-            float budget = Stats.Range * Def.PathBudgetMultiplier;
-            var p = origin;
+            Vector3 Chest(Vector3 p) => new Vector3(p.x, Relief.Ground(p) + BeamHeight, p.z);
+            var points = new List<Vector3> { muzzle.position, Chest(flat) };
+            float budget = Range * Def.PathBudgetMultiplier;
+            var p = flat;
             for (int bounce = 0; bounce <= 3 && budget > 0.05f; bounce++)
             {
-                bool surface = Physics.Raycast(p, dir, out var hit, budget, Layers.RockMask | Layers.WallMask,
+                bool surface = Physics.Raycast(Chest(p), dir, out var hit, budget, Layers.RockMask | Layers.WallMask,
                     QueryTriggerInteraction.Ignore);
                 float len = surface ? hit.distance : budget;
-                foreach (var h in Physics.SphereCastAll(p, 0.15f, dir, len, Layers.EnemyMask, QueryTriggerInteraction.Ignore))
+                var end = p + dir * len;
+                foreach (var e in Enemy.All.ToArray())
                 {
-                    var e = h.collider.GetComponentInParent<Enemy>();
-                    if (e != null && struck.Add(e)) e.TakeDamage(Stats.Damage, from: p);
+                    if (!e.Alive || !e.Targetable || struck.Contains(e)) continue;
+                    if (DistanceToSegment(e.transform.position, p, end) > e.Def.Radius + 0.15f) continue;
+                    struck.Add(e);
+                    e.TakeDamage(Stats.Damage, from: Chest(p));
                 }
-                p += dir * len;
-                points.Add(p);
+                // Laid along the land in short steps, so the beam reads over a rise.
+                int steps = Mathf.Max(1, Mathf.CeilToInt(len / 1.5f));
+                for (int k = 1; k <= steps; k++) points.Add(Chest(Vector3.Lerp(p, end, k / (float)steps)));
+                p = end;
                 budget -= len;
                 if (!surface) break;
                 dir = Vector3.Reflect(dir, hit.normal);
@@ -271,21 +295,33 @@ namespace OrcHordeFps
             Fx.Polyline(points.ToArray(), Def.Color, 0.07f, 0.09f);
             Fx.Polyline(points.ToArray(), Color.white, 0.025f, 0.06f);
             Sfx.At("laser_zap", muzzle.position);
-            for (int i = 2; i < points.Count; i++) Fx.Burst(points[i], 0.25f, Def.Color, 0.12f);
+            Fx.Burst(points[points.Count - 1], 0.25f, Def.Color, 0.12f);
             flash = 1f;
+        }
+
+        /// <summary>Distance on the ground from a point to a segment.</summary>
+        static float DistanceToSegment(Vector3 x, Vector3 a, Vector3 b)
+        {
+            var p = new Vector2(x.x, x.z);
+            var u = new Vector2(a.x, a.z);
+            var v = new Vector2(b.x, b.z);
+            var d = v - u;
+            float t = d.sqrMagnitude < 1e-6f ? 0 : Mathf.Clamp01(Vector2.Dot(p - u, d) / d.sqrMagnitude);
+            return Vector2.Distance(p, u + d * t);
         }
 
         void Pulse()
         {
             foreach (var e in Enemy.All.ToArray())
             {
-                if (!Valid(e)) continue;
+                // The pulse arcs over rock as it always has, but not through a hill.
+                if (!Valid(e) || Physics.Linecast(muzzle.position, e.AimPoint, Layers.TerrainMask, QueryTriggerInteraction.Ignore)) continue;
                 e.Slow(Def.SlowFactor, Stats.SlowDuration);
                 e.TakeDamage(Stats.Damage, from: transform.position);
                 // A bolt from the crystal to every orc caught in the pulse.
                 if (e.Targetable) Fx.Lightning(muzzle.position, e.AimPoint, Def.Color);
             }
-            Fx.Ring(transform.position + Vector3.up * 0.4f, Stats.Range, Def.Color, 0.45f);
+            Fx.Ring(transform.position + Vector3.up * 0.4f, Range, Def.Color, 0.45f);
             Sfx.At("arc_zap", muzzle.position);
             flash = 1f;
         }
@@ -307,7 +343,7 @@ namespace OrcHordeFps
             for (int i = 0; i < 6; i++)
             {
                 var spread = Quaternion.Euler(Random.Range(-4f, 4f), Random.Range(-half, half) * 0.8f, 0);
-                var v = spread * muzzle.forward * Stats.Range * Random.Range(1.8f, 2.6f);
+                var v = spread * muzzle.forward * Range * Random.Range(1.8f, 2.6f);
                 var c = Color.Lerp(U.Hex(0xffe060), U.Hex(0xff3a10), Random.value);
                 c.a = 0.55f;
                 Fx.Puff(muzzle.position + v * 0.02f, v, Random.Range(0.15f, 0.35f), c, Random.Range(0.3f, 0.45f));

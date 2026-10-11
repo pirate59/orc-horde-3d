@@ -13,6 +13,8 @@ namespace OrcHordeFps
         public const int EnemyMask = 1 << Enemy;
         public const int TowerMask = 1 << Tower;
         public const int GroundMask = (1 << Road) | (1 << BuildGround) | (1 << Rock);
+        /// <summary>The land itself, road and ledges: what hides an orc behind a rise.</summary>
+        public const int TerrainMask = (1 << Road) | (1 << BuildGround);
 
         /// <summary>What a bullet can strike. Your own towers do not stop your fire.</summary>
         public const int ShotMask = GroundMask | WallMask | EnemyMask;
@@ -215,6 +217,28 @@ namespace OrcHordeFps
             lr.numCapVertices = 2;
             return lr;
         }
+
+        /// <summary>A circle laid on whatever ground lies under it, so a range ring runs up and down the hills.</summary>
+        public static void SetGroundCircle(LineRenderer lr, Vector3 center, float radius, int segments = 48)
+        {
+            lr.loop = true;
+            lr.positionCount = segments;
+            for (int i = 0; i < segments; i++)
+            {
+                float a = i * Mathf.PI * 2f / segments;
+                var p = center + new Vector3(Mathf.Cos(a) * radius, 0, Mathf.Sin(a) * radius);
+                // Road and ledges only: through rock the ring runs on at the land's height, hidden, rather than up the cliff.
+                p.y = Physics.Raycast(new Vector3(p.x, 60f, p.z), Vector3.down, out var hit, 120f, Layers.TerrainMask, QueryTriggerInteraction.Ignore)
+                    ? hit.point.y : Relief.Ground(p);
+                lr.SetPosition(i, p + Vector3.up * 0.08f);
+            }
+        }
+
+        /// <summary>A height note for a range: "+12% range from height", or empty on level ground.</summary>
+        public static string HeightNote(float factor) =>
+            Mathf.Abs(factor - 1f) < 0.02f ? "" : factor > 1f
+                ? $"<color=#8fe08f>+{factor - 1f:P0} range from height</color>"
+                : $"<color=#ff9a7a>{factor - 1f:P0} range, low ground</color>";
 
         public static void SetCircle(LineRenderer lr, Vector3 center, float radius, int segments = 48)
         {

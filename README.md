@@ -56,7 +56,18 @@ The maps aren't copied by hand. `Tools/export-maps.sh` bundles Orc Horde's own m
 Tools/export-maps.sh ~/code/orc-horde/branches/claude-new-build
 ```
 
-In 3D, path cells are open floor and tower-ground cells are a low step (a tower stands at the centre of one, as in Orc Horde). The remaining rock is cliff. Bridges carry orcs over a lane on a deck you can see, and tunnels hide them in the rock until they come out the other side.
+In 3D, path cells are open floor and tower-ground cells are a raised ledge (a tower stands at the centre of one, as in Orc Horde). The remaining rock is cliff. Bridges carry orcs over a lane on a deck you can see, and tunnels hide them in the rock until they come out the other side.
+
+### Relief
+
+DEVIATION: Orc Horde's maps are flat. Here a smooth height field (`World/Relief.cs`) rolls under each map, seeded by its id so it's the same every time. Roads climb and dip by up to about 6 m and never get steeper than about 25°, inside what the orcs' navmesh allows. Tower ledges stand at least 0.35 m above the road beside them, in 0.4 m terraces: one step is walkable, two need a jump, and orcs can never climb one. The land is level around gates, the base, bridges and tunnels, so everything placed at a fixed height there works as on a flat map.
+
+The hills matter in a fight:
+
+- **Height is reach.** A tower's range scales with how high it stands above the road it covers: +12% per metre, from −20% in a dip to +30% on a high ledge. An average ledge is level, so height trades reach between spots rather than adding it overall. The placement ghost's ring and hint show the effect before you build, and inspecting a tower shows it after.
+- **The land blocks sight.** An orc over a crest is hidden from towers and your rifle, and Machine Gun bullets strike the ground. The Arc's pulse won't reach through a hill. The Cannon lobs over everything, so it covers blind spots. The Laser still fires without sight, as before, but its beam now runs at chest height over the land, up and down the road.
+
+Across the campaign, 5–13% of the road within a tower's reach is hidden by the land.
 
 ## Art
 
@@ -154,6 +165,12 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/build" -smokebuild
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/gallery" -smokegallery canyon_approach
+```
+
+**Relief:** on each listed map it places a layout, lets the horde in, then freezes it and photographs the whole map, a climb, a descent and a view from a ledge, with range rings showing. It logs the road's height range and steepest slope, whether every route is still open, the range factor height gives every buildable spot, and how much of the road in reach the land hides:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/relief" -smokerelief canyon_approach,draw_green
 ```
 
 **Armoury:** all five towers firing at immortal puppet orcs, then a close-up of each tower and the rifle idle, firing and reloading:

@@ -8,15 +8,16 @@ namespace OrcHordeFps
     /// <summary>
     /// Raises an exported Orc Horde map into hex columns.
     ///
-    /// Path is open floor at ground level. Tower ground is a low step the player
-    /// can walk onto and build on. Other rock is a cliff too tall to climb. Cells
+    /// Path is open floor that follows the land (<see cref="Relief"/>), rising and
+    /// falling in slopes. Tower ground is a ledge beside it, at least a step
+    /// above the road and terraced, that the player can walk onto and build on.
+    /// Other rock is a cliff too tall to climb. Cells
     /// are merged into one mesh per kind per chunk, so a big map stays a few
     /// dozen draw calls.
     /// </summary>
     public static class MapBuilder
     {
-        public const float TowerGroundHeight = 0.35f;
-        const float CliffMin = 4.5f, CliffVariance = 3.5f;
+        const float CliffMin = 5f, CliffVariance = 3.5f;
         const int ChunkSize = 16;
         /// <summary>Metres per texture repeat on the path, on platform tops and up cliff faces.</summary>
         const float PathTile = 4f, TopTile = 3f, SideTile = 3.5f;
@@ -59,6 +60,7 @@ namespace OrcHordeFps
             var edgeMat = Mats.Lit(U.Hex(0x3ec9e0), 1.2f);
             var corners = grid.CornerOffsets();
             var links = map.links ?? new MapLink[0];
+            Relief.Init(map, grid);
 
             for (int cx = 0; cx < grid.Columns; cx += ChunkSize)
             for (int cy = grid.FirstRow; cy <= grid.LastRow; cy += ChunkSize)
@@ -78,22 +80,26 @@ namespace OrcHordeFps
 
                     if (HexGrid.IsPath(kind))
                     {
-                        path.AddTop(center, corners, Shade(0.9f + noise * 0.15f), PathTile);
+                        path.AddTop(center, corners, Shade(0.9f + noise * 0.15f), PathTile, Relief.Ground);
                         continue;
                     }
 
                     bool cliff = kind == HexGrid.Rock;
                     var batch = cliff ? rock : ground;
-                    batch.AddTop(center + Vector3.up * h, corners, Shade(0.85f + noise * 0.25f), TopTile);
+                    batch.AddTop(center + Vector3.up * h, corners, Shade(0.85f + noise * 0.25f), TopTile, null);
                     var side = Shade(0.78f + noise * 0.2f);
 
                     for (int s = 0; s < 6; s++)
                     {
                         var n = HexGrid.Across(c, r, s);
+                        Vector3 a = corners[s], b = corners[(s + 1) % 6];
+                        bool road = HexGrid.IsPath(grid.Kind(n));
+                        // Against the road the wall's foot follows the slope; against other ground it is level.
                         float nh = Height(map, grid, links, n.x, n.y);
-                        if (nh >= h) continue;
-                        batch.AddSide(center, corners[s], corners[(s + 1) % 6], nh, h, side, SideTile);
-                        if (!cliff && HexGrid.IsPath(grid.Kind(n)))
+                        float lowA = road ? Relief.Ground(center + a) : nh, lowB = road ? Relief.Ground(center + b) : nh;
+                        if (lowA >= h && lowB >= h) continue;
+                        batch.AddSide(center, a, b, lowA, lowB, h, side, SideTile);
+                        if (!cliff && road)
                             edges.AddStrip(center, corners[s], corners[(s + 1) % 6], h + 0.01f, 0.08f);
                     }
                 }
@@ -111,19 +117,21 @@ namespace OrcHordeFps
         }
 
         /// <summary>
-        /// A cell's standing height. Rock inside a bridge's span is cut down to
-        /// the deck, so the bridge rests on it; a tunnel's rock stays whole.
+        /// A cell's standing height (a road cell's is the land at its centre). Rock
+        /// inside a bridge's span is cut down to the deck, so the bridge rests on
+        /// it; a tunnel's rock stays whole. Relief is level around both.
         /// </summary>
         static float Height(MapData map, HexGrid grid, MapLink[] links, int c, int r)
         {
             char kind = grid.Kind(c, r);
-            if (HexGrid.IsPath(kind)) return 0f;
-            if (kind == HexGrid.TowerGround) return TowerGroundHeight;
+            var cell = new Vector2Int(c, r);
             var center = grid.Center(c, r);
+            if (HexGrid.IsPath(kind)) return Relief.Ground(center);
+            if (kind == HexGrid.TowerGround) return Relief.TowerGround(cell);
             foreach (var link in links)
                 if (!link.IsTunnel && Links.SpanRect(map, link).Contains(new Vector2(center.x, center.z)))
                     return Links.DeckHeight;
-            return CliffMin + Mathf.PerlinNoise(c * 0.37f, r * 0.41f) * CliffVariance;
+            return Relief.CellPeak(cell) + CliffMin + Mathf.PerlinNoise(c * 0.37f, r * 0.41f) * CliffVariance;
         }
 
         /// <summary>Invisible walls at the map's edge, where the path runs out into a gate or the yard.</summary>
@@ -289,20 +297,22 @@ namespace OrcHordeFps
 
             static Vector2 Plan(Vector3 p, float tile) => new Vector2(p.x, p.z) / tile;
 
-            public void AddTop(Vector3 center, Vector3[] corners, Color col, float tile)
+            /// <summary>A hex top: flat, or with <paramref name="land"/> set, each vertex lifted onto the land so neighbours join in one slope.</summary>
+            public void AddTop(Vector3 center, Vector3[] corners, Color col, float tile, System.Func<Vector3, float> land)
             {
+                Vector3 Lift(Vector3 p) => land == null ? p : new Vector3(p.x, land(p), p.z);
                 for (int i = 0; i < 6; i++)
                 {
-                    Vector3 a = center, b = center + corners[i], c = center + corners[(i + 1) % 6];
+                    Vector3 a = Lift(center), b = Lift(center + corners[i]), c = Lift(center + corners[(i + 1) % 6]);
                     Tri(0, a, b, c, Plan(a, tile), Plan(b, tile), Plan(c, tile), Vector3.up, col);
                 }
             }
 
             /// <summary>A wall face; its texture runs along the edge and up the height, continuous between neighbours.</summary>
-            public void AddSide(Vector3 center, Vector3 a, Vector3 b, float low, float high, Color col, float tile)
+            public void AddSide(Vector3 center, Vector3 a, Vector3 b, float lowA, float lowB, float high, Color col, float tile)
             {
                 var outward = (a + b) / 2;
-                Vector3 a0 = center + a + Vector3.up * low, b0 = center + b + Vector3.up * low;
+                Vector3 a0 = center + a + Vector3.up * Mathf.Min(lowA, high), b0 = center + b + Vector3.up * Mathf.Min(lowB, high);
                 Vector3 a1 = center + a + Vector3.up * high, b1 = center + b + Vector3.up * high;
                 var along = (b - a).normalized;
                 Vector2 Uv(Vector3 p) => new Vector2(Vector3.Dot(p, along), p.y) / tile;

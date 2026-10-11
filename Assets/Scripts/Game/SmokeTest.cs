@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest, gallery, stress, armory;
+        static bool buildTest, gallery, stress, armory, relief;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -77,6 +77,11 @@ namespace OrcHordeFps
                     {
                         buildTest = true;
                         queue = new Queue<string>(new[] { args[i + 1] });
+                    }
+                    if (args[i] == "-smokerelief")
+                    {
+                        relief = true;
+                        queue = new Queue<string>(args[i + 1].Split(','));
                     }
                     if (args[i] == "-smokemaps")
                         queue = new Queue<string>(args[i + 1] == "all"
@@ -144,7 +149,7 @@ namespace OrcHordeFps
                 Application.Quit();
                 yield break;
             }
-            yield return campaign ? Campaign() : Tour();
+            yield return campaign ? Campaign() : relief ? ReliefShots() : Tour();
 
             queue?.Dequeue();
             bool more = queue != null && queue.Count > 0 && (!campaign || --campaignMaps > 0);
@@ -740,8 +745,191 @@ namespace OrcHordeFps
             int placed = 0, next = 2;
             foreach (var def in Towers.All)
                 for (int i = 0; i < Progression.Tower(def).Limit && next < cells.Count; i++, next += 3, placed++)
-                    Tower.Create(def, grid.Center(cells[next]) + Vector3.up * MapBuilder.TowerGroundHeight);
+                    Tower.Create(def, Relief.TowerSpot(cells[next]));
             return placed;
+        }
+
+        /// <summary>
+        /// The lie of the land: towers placed, the horde let in for a while, then
+        /// frozen and photographed from an oblique view of the whole map, and up and
+        /// down its steepest stretch of road.
+        /// </summary>
+        IEnumerator ReliefShots()
+        {
+            var gm = GameManager.I;
+            var map = gm.Map;
+            var grid = gm.Grid;
+            int placed = PlaceLayout(gm);
+
+            // The road's highest and lowest cells, and its steepest triangle.
+            Vector2Int top = default, low = default;
+            float topH = float.MinValue, lowH = float.MaxValue, steepest = 0, ledgeMin = float.MaxValue, ledgeMax = float.MinValue;
+            var corners = grid.CornerOffsets();
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+            {
+                var cell = new Vector2Int(c, r);
+                var centre = grid.Center(cell);
+                if (grid.Kind(cell) == HexGrid.TowerGround)
+                {
+                    float lift = Relief.TowerGround(cell) - Relief.CellPeak(cell);
+                    ledgeMin = Mathf.Min(ledgeMin, lift);
+                    ledgeMax = Mathf.Max(ledgeMax, lift);
+                }
+                if (!HexGrid.IsPath(grid.Kind(cell))) continue;
+                float h = Relief.Ground(centre);
+                if (h > topH) { topH = h; top = cell; }
+                if (h < lowH) { lowH = h; low = cell; }
+                for (int i = 0; i < 6; i++)
+                {
+                    var a = Relief.OnGround(centre);
+                    var b = Relief.OnGround(centre + corners[i]);
+                    var d = Relief.OnGround(centre + corners[(i + 1) % 6]);
+                    float slope = Vector3.Angle(Vector3.Cross(b - a, d - a).normalized * Mathf.Sign(Vector3.Cross(b - a, d - a).y), Vector3.up);
+                    steepest = Mathf.Max(steepest, slope);
+                }
+            }
+
+            float least = float.MaxValue, most = float.MinValue, sum = 0;
+            foreach (var tw in Tower.All) { least = Mathf.Min(least, tw.RangeFactor); most = Mathf.Max(most, tw.RangeFactor); sum += tw.RangeFactor; }
+
+            gm.StartRound();
+            Time.timeScale = 3f;
+            float t = 0, sample = 0;
+            int inReach = 0, hidden = 0;
+            while (gm.Phase == Phase.Combat && t < 25f && Enemy.All.Count < 45)
+            {
+                t += Time.unscaledDeltaTime;
+                if ((sample -= Time.unscaledDeltaTime) <= 0)
+                {
+                    sample = 0.5f;
+                    foreach (var tw in Tower.All)
+                    foreach (var e in Enemy.All)
+                    {
+                        if ((e.transform.position - tw.transform.position).sqrMagnitude > tw.Range * tw.Range) continue;
+                        inReach++;
+                        if (tw.HiddenByLand(e)) hidden++;
+                    }
+                }
+                yield return null;
+            }
+            Time.timeScale = 0f;
+            Hud.Hidden = true;
+
+            var routes = RoutePreview.I != null ? RoutePreview.I.Routes : new List<RoutePreview.Route>();
+            int sealedRoutes = routes.FindAll(r => r.Sealed).Count;
+            Log($"{map.id,-18} towers={placed} road={lowH:0.0}..{topH:0.0}m steepest={steepest:0}° ledges=+{ledgeMin:0.00}..+{ledgeMax:0.00}m " +
+                $"orcs={Enemy.All.Count} routes={routes.Count} sealed={sealedRoutes} stranded={Enemy.Stranded}");
+            if (Tower.All.Count > 0)
+                Log($"{map.id,-18} height range x{least:0.00}..x{most:0.00} mean x{sum / Tower.All.Count:0.00}  " +
+                    $"orcs hidden by the land: {hidden}/{inReach} ({(inReach > 0 ? hidden / (float)inReach : 0):P0}) of tower-orc pairs in reach");
+            // Every buildable spot beside the road, not just where the bot built: what height
+            // would give a tower there, and how much of the road in reach the land hides from it.
+            float spotLeast = float.MaxValue, spotMost = float.MinValue, spotSum = 0;
+            int spots = 0, roadSeen = 0, roadHidden = 0, boosted = 0;
+            float reachBase = Towers.MachineGun.Range;
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+            {
+                var cell = new Vector2Int(c, r);
+                if (grid.Kind(cell) != HexGrid.TowerGround) continue;
+                bool byRoad = false;
+                for (int i = 0; i < 6; i++) byRoad |= HexGrid.IsPath(grid.Kind(HexGrid.Across(c, r, i)));
+                if (!byRoad) continue;
+                float f = Relief.RangeFactor(cell, reachBase);
+                spotLeast = Mathf.Min(spotLeast, f); spotMost = Mathf.Max(spotMost, f); spotSum += f; spots++;
+                if (f >= 1.1f) boosted++;
+                var eye = Relief.TowerSpot(cell) + Vector3.up * 1.2f;
+                int reach = Mathf.CeilToInt(reachBase * f / (grid.Apothem * 1.5f)) + 1;
+                for (int dc = -reach; dc <= reach; dc++)
+                for (int dr = -reach; dr <= reach; dr++)
+                {
+                    var road = new Vector2Int(c + dc, r + dr);
+                    if (!HexGrid.IsPath(grid.Kind(road))) continue;
+                    var chest = Relief.RoadSpot(road) + Vector3.up * 1.1f;
+                    if ((chest - eye).sqrMagnitude > reachBase * f * reachBase * f) continue;
+                    roadSeen++;
+                    if (Physics.Linecast(eye, chest, Layers.TerrainMask, QueryTriggerInteraction.Ignore)) roadHidden++;
+                }
+            }
+            if (spots > 0)
+                Log($"{map.id,-18} spots={spots} height range x{spotLeast:0.00}..x{spotMost:0.00} mean x{spotSum / spots:0.00} " +
+                    $"+10%-or-better={boosted / (float)spots:P0}  road in reach hidden by land={(roadSeen > 0 ? roadHidden / (float)roadSeen : 0):P0}");
+            foreach (var tw in Tower.All) tw.ShowRange(true);
+
+            // Whole map, from high on its south side.
+            var mid = new Vector3(map.Width / 2, 0, map.Depth / 2);
+            float span = Mathf.Max(map.Width, map.Depth);
+            yield return Photo($"{map.id}-relief-wide", mid + new Vector3(0, span * 0.42f, -span * 0.62f), mid, 50f);
+
+            // The steepest stretch: the nearest orc-filled road below the crest, looking up at it, then back down.
+            var crest = Relief.OnGround(grid.Center(top));
+            Vector3 foot = crest;
+            float best = float.MinValue;
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+            {
+                var cell = new Vector2Int(c, r);
+                if (!HexGrid.IsPath(grid.Kind(cell))) continue;
+                var p = Relief.OnGround(grid.Center(cell));
+                float run = Vector3.Distance(new Vector3(p.x, 0, p.z), new Vector3(crest.x, 0, crest.z));
+                if (run < 10f || run > 26f) continue;
+                float score = (crest.y - p.y) - run * 0.02f;
+                if (score > best) { best = score; foot = p; }
+            }
+            var up = (crest - foot);
+            var flat = new Vector3(up.x, 0, up.z).normalized;
+            var side = Vector3.Cross(Vector3.up, flat);
+            yield return Photo($"{map.id}-relief-climb", foot + Vector3.up * 1.7f, crest + Vector3.up * 1.2f, 62f);
+            yield return Photo($"{map.id}-relief-descent", crest + Vector3.up * 2.2f, foot, 62f);
+            // The same stretch from above and off to one side, so the slope shows in profile.
+            var middle = (crest + foot) / 2;
+            yield return Photo($"{map.id}-relief-profile", middle + side * 26f + Vector3.up * 14f, middle, 55f);
+
+            // From a high ledge beside the road, as the player stands to build.
+            Vector2Int ledge = default;
+            float ledgeTop = float.MinValue;
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+            {
+                var cell = new Vector2Int(c, r);
+                if (grid.Kind(cell) != HexGrid.TowerGround) continue;
+                bool byRoad = false;
+                for (int i = 0; i < 6; i++) byRoad |= HexGrid.IsPath(grid.Kind(HexGrid.Across(c, r, i)));
+                float lift = Relief.TowerGround(cell) - Relief.CellPeak(cell);
+                if (byRoad && lift > ledgeTop) { ledgeTop = lift; ledge = cell; }
+            }
+            var stand = Relief.TowerSpot(ledge);
+            Vector3 view = stand + Vector3.forward * 10f;
+            float nearest = float.MaxValue;
+            foreach (var e in Enemy.All)
+            {
+                float d = Vector3.Distance(e.transform.position, stand);
+                if (d > 6f && d < nearest) { nearest = d; view = e.transform.position; }
+            }
+            yield return Photo($"{map.id}-relief-ledge", stand + (stand - view).normalized * 3f + Vector3.up * 2.2f, view, 62f);
+
+            Hud.Hidden = false;
+            Time.timeScale = 1f;
+        }
+
+        /// <summary>One photograph from a free camera, with the player's own stood down and fog lifted.</summary>
+        IEnumerator Photo(string name, Vector3 from, Vector3 at, float fov)
+        {
+            var player = PlayerController.I.Cam;
+            var cam = new GameObject("Photo").AddComponent<Camera>();
+            cam.CopyFrom(player);
+            cam.fieldOfView = fov;
+            cam.farClipPlane = 400;
+            cam.transform.SetPositionAndRotation(from, Quaternion.LookRotation(at - from));
+            player.enabled = false;
+            bool fog = RenderSettings.fog;
+            RenderSettings.fog = false;
+            yield return null;
+            yield return Snap(name);
+            RenderSettings.fog = fog;
+            player.enabled = true;
+            Destroy(cam.gameObject);
         }
 
         /// <summary>The whole map from straight above, with the player's camera stood down for the frame.</summary>
