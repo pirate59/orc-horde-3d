@@ -60,6 +60,8 @@ namespace OrcHordeFps
                 if (shader == null || !shader.isSupported) { Graphics.Blit(source, destination); return; }
                 material = new Material(shader);
             }
+            // A window minimised or a page hidden can leave the frame too small to halve: pass it through.
+            if (source.width < 16 || source.height < 16) { Graphics.Blit(source, destination); return; }
             var s = Settings;
             var format = source.format;
             int halfW = source.width / 2, halfH = source.height / 2;
