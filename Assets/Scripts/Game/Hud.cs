@@ -55,6 +55,7 @@ namespace OrcHordeFps
             bool tactical = PlayerController.I != null && PlayerController.I.Tactical;
             if (gm.Phase == Phase.Build && !gm.ShopOpen) DrawBuildBar();
             DrawCurrency(gm);
+            DrawPerf();
             if (gm.Phase == Phase.Build && !gm.ShopOpen && !gm.Paused) DrawBriefing(gm);
             if (gm.Phase == Phase.Build && !gm.ShopOpen) DrawInspection();
             if (!gm.ShopOpen && !tactical) DrawCrosshair();
@@ -387,7 +388,7 @@ namespace OrcHordeFps
 
             var text = lines.ToString();
             float h = small.CalcHeight(new GUIContent(text), S(260)) + S(20);
-            var rect = new Rect(Screen.width - S(300), S(96), S(280), h);
+            var rect = new Rect(Screen.width - S(300), S(122), S(280), h);
             Box(rect, Panel);
             GUI.Label(new Rect(rect.x + S(12), rect.y + S(10), S(260), h), text, small);
         }
@@ -414,6 +415,43 @@ namespace OrcHordeFps
             var rect = new Rect(Screen.width / 2f + S(30), Screen.height / 2f + S(20), S(320), S(76));
             Box(rect, Panel);
             GUI.Label(new Rect(rect.x + S(12), rect.y + S(8), rect.width - S(24), rect.height), text, small);
+        }
+
+        // --- Performance ticker ------------------------------------------------------------
+
+        float perfFps, perfMs, perfTps, perfWindow, perfWorst, worstShown;
+        int perfFrames, perfTicks;
+
+        /// <summary>Counts physics ticks: FixedUpdate runs once per tick, however the frames fall.</summary>
+        void FixedUpdate() => perfTicks++;
+
+        void Update()
+        {
+            float dt = Time.unscaledDeltaTime;
+            perfFrames++;
+            perfWindow += dt;
+            perfWorst = Mathf.Max(perfWorst, dt);
+            if (perfWindow < 0.5f) return;
+            perfFps = perfFrames / perfWindow;
+            perfMs = perfWindow / perfFrames * 1000f;
+            // Ticks per real second, so a paused or fast-forwarded game shows what it's really doing.
+            perfTps = perfTicks / perfWindow;
+            worstShown = perfWorst * 1000f;
+            perfFrames = perfTicks = 0;
+            perfWindow = perfWorst = 0;
+        }
+
+        /// <summary>
+        /// Frames per second (and the average and worst frame in milliseconds), and physics ticks
+        /// per second: when the frame rate drops, TPS shows whether the simulation still keeps time.
+        /// </summary>
+        void DrawPerf()
+        {
+            var r = new Rect(Screen.width - S(240), S(88), S(220), S(26));
+            Box(r, Panel);
+            string colour = perfFps >= 55 ? "#5effc4" : perfFps >= 30 ? "#ffb347" : "#ff6a6a";
+            GUI.Label(new Rect(r.x + S(10), r.y + S(3), r.width, r.height),
+                $"<color={colour}><b>{perfFps:0}</b> FPS</color>  <color=#bbb>{perfMs:0.0}/{worstShown:0} ms · <b>{perfTps:0}</b> TPS</color>", small);
         }
 
         void DrawCurrency(GameManager gm)

@@ -18,6 +18,7 @@ Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it open
 | Tactical view (between rounds) | M. WASD pan, Q/E turn, wheel zoom, place with the mouse, T to drop in on foot there |
 | Route preview | V toggles the lines from each gate to the base; red means a road is sealed and orcs will break through |
 | Skill web (between rounds) | B or Tab; drag to pan, wheel to zoom, click a node |
+| Performance | Top right: FPS (average/worst frame ms) and TPS, physics ticks per second |
 | Start the wave / continue | G |
 | Help / pause | H / Esc |
 
