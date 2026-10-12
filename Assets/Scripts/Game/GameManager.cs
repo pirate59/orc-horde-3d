@@ -54,11 +54,21 @@ namespace OrcHordeFps
         /// <summary>Health multiplier on the budget-drawn orcs of a round whose pressure outruns <see cref="BodyBudget"/>. Bosses and other set pieces are outside the budget and keep their own health.</summary>
         public float RoundToughness => Mathf.Max(1f, RoundPressure / BodyBudget);
 
+        /// <summary>
+        /// How many bodies each unit of pressure is fielded as. Three: a horde three times the size,
+        /// each orc with a third of the health and a third of the reward, so a round is as hard and
+        /// pays as well as before but fills the road. Bosses and set pieces are left as they are.
+        /// </summary>
+        public const float Crowd = 3f;
+
         /// <summary>The pressure spent on bodies: what spawns.</summary>
-        public float RoundBudget => RoundPressure / RoundToughness;
+        public float RoundBudget => RoundPressure / RoundToughness * Crowd;
+
+        /// <summary>The health multiplier each budget-drawn orc actually spawns with.</summary>
+        public float RoundHealth => RoundToughness / Crowd;
 
         /// <summary>This round's toughness. Fixed for the round, so reinforcements match the horde they join.</summary>
-        public float Toughness => Phase == Phase.Build ? 1f : RoundToughness;
+        public float Toughness => Phase == Phase.Build ? 1f : RoundHealth;
 
         /// <summary>
         /// What each orc pays relative to its Orc Horde reward: the original budget
@@ -66,7 +76,7 @@ namespace OrcHordeFps
         /// and the skill tree's prices keep their pacing.
         /// </summary>
         public float RewardScale => Round.pressureBudget / RoundBudget;
-        const int MaxAlive = 110;
+        const int MaxAlive = 330;
         /// <summary>Spawning stops short of the round's end so its tail can arrive.</summary>
         const float SpawnWindowFraction = 0.85f;
         /// <summary>Spawn intensity swings between these, in segments of a few seconds, as Orc Horde's pacing does.</summary>
@@ -142,7 +152,7 @@ namespace OrcHordeFps
             ClearHorde();
             foreach (var b in Barricade.All) b.Restore();
             PlayerHealth.I?.Revive();
-            float tough = RoundToughness;
+            float tough = RoundHealth;
             string toughNote = tough > 1.01f ? $"  ·  orcs have ×{tough:0.0} health" : "";
             Announce($"Round {RoundIndex + 1}: {Round.name}{toughNote}  —  build your line, press G to start", Color.white, 6f);
         }

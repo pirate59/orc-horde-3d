@@ -30,7 +30,17 @@ namespace OrcHordeFps
         public float Toughness { get; private set; } = 1f;
         public bool Alive => Health > 0f;
         public Vector3 AimPoint => transform.position + Vector3.up * Def.Height * 0.5f;
-        public Vector3 Velocity => entry != null ? entryVelocity : agent.velocity;
+        public Vector3 Velocity => entry != null ? entryVelocity : flowing ? flowVelocity : agent.velocity;
+
+        /// <summary>
+        /// Moving with the horde on the flow field (<see cref="FlowField"/>) rather than on its own
+        /// navmesh path: true for the rank and file on their way to the base. Bosses, anything at a
+        /// barricade, lured by a beacon or cut off from the base path-find as before.
+        /// </summary>
+        bool flowing;
+        Vector3 flowVelocity;
+        /// <summary>Progress on the flow field: the best distance yet, when it was set, and a spell of path-finding after a stall.</summary>
+        float flowBest = float.PositiveInfinity, flowBestAt, flowOffUntil;
         /// <summary>False while inside a tunnel: out of sight and out of reach.</summary>
         public bool Targetable { get; private set; } = true;
         /// <summary>
@@ -48,6 +58,7 @@ namespace OrcHordeFps
 
         /// <summary>Path left to the base, for "first" targeting. Smaller is further along.</summary>
         public float Remaining =>
+            flowing ? FlowField.Distance(transform.position) :
             agent != null && agent.isOnNavMesh && !agent.pathPending && agent.hasPath && !float.IsInfinity(agent.remainingDistance)
                 ? agent.remainingDistance
                 : Vector3.Distance(transform.position, GameManager.I.Map.Base) * 1.5f;
@@ -67,7 +78,7 @@ namespace OrcHordeFps
         Color tint = Color.white;
 
         /// <summary>The dead lie a while before they sink; past this many, the oldest go at once.</summary>
-        const int MaxCorpses = 40;
+        const int MaxCorpses = 90;
         static readonly Queue<GameObject> corpses = new Queue<GameObject>();
 
         // A bridge or tunnel crossing in progress.
@@ -280,7 +291,7 @@ namespace OrcHordeFps
         /// <summary>Heads for its goal again now, not at its next think: a beacon has gone up or gone out.</summary>
         public void Repath()
         {
-            if (Alive && !puppet && agent != null && agent.isOnNavMesh && wallTarget == null && crossing == null)
+            if (Alive && !puppet && !flowing && agent != null && agent.isOnNavMesh && wallTarget == null && crossing == null)
                 agent.SetDestination(Goal);
         }
 
@@ -401,7 +412,12 @@ namespace OrcHordeFps
                 Think();
             }
 
+            bool wasFlowing = flowing;
+            flowing = wallTarget == null && CanFlow();
+            // Joining the flow afresh: progress is judged from now.
+            if (flowing && !wasFlowing) { flowBest = float.PositiveInfinity; flowBestAt = Time.time; }
             if (wallTarget != null) AttackWall();
+            else if (flowing) Flow();
             else if (agent.isStopped) agent.isStopped = false;
 
             HitPlayer();
@@ -569,8 +585,52 @@ namespace OrcHordeFps
                 return;
             }
 
-            if (wallTarget == null) agent.SetDestination(Goal);
+            if (wallTarget == null && !flowing) agent.SetDestination(Goal);
         }
+
+        /// <summary>Whether this orc moves with the flow: rank and file, headed for the base, which can be reached.</summary>
+        bool CanFlow() => !Def.IsBoss && Def.Radius < 0.6f && crossing == null && !Lured && Time.time >= flowOffUntil && FlowField.Reaches(transform.position);
+
+        /// <summary>
+        /// One step with the horde: towards the best neighbouring cell on the flow field, crowded
+        /// cells counting as further, pushed off any orc it overlaps, turning no faster than it can.
+        /// </summary>
+        void Flow()
+        {
+            if (agent.hasPath) agent.ResetPath();
+            // A safety net: an orc that gains no ground for a few seconds (something in the way the field
+            // doesn't know about) path-finds for a while instead, which finds the wall to break if there is one.
+            float left = FlowField.Distance(transform.position);
+            if (left < flowBest - 0.5f) { flowBest = left; flowBestAt = Time.time; }
+            else if (Time.time - flowBestAt > 3f)
+            {
+                flowOffUntil = Time.time + 6f;
+                flowBest = float.PositiveInfinity;
+                flowBestAt = Time.time;
+                flowing = false;
+                agent.SetDestination(Goal);
+                return;
+            }
+            // Smaller orcs give way to crowds more readily, as in Orc Horde.
+            float crowding = Mathf.Clamp(1.2f - Def.Radius * 1.2f, 0.35f, 1f);
+            if (!FlowField.Steer(transform.position, crowding, out var toward, out var link)) { flowing = false; return; }
+            if (link != null && Vector3.Distance(Flat(transform.position), Flat(link.Entry)) < 1.2f) { Cross(); return; }
+
+            var desired = Flat(toward - transform.position).normalized + FlowField.Separation(this) * 1.1f;
+            desired.y = 0;
+            if (desired.sqrMagnitude < 1e-4f) { flowVelocity = Vector3.zero; return; }
+            desired.Normalize();
+            var heading = flowVelocity.sqrMagnitude > 0.01f ? flowVelocity.normalized : transform.forward;
+            heading = Vector3.RotateTowards(heading, desired, Def.TurnDegreesPerSecond * Mathf.Deg2Rad * Time.deltaTime, 0f);
+            float slow = Time.time < slowUntil ? slowFactor : 1f;
+            float speed = Def.Speed * slow * BossSpeed();
+            flowVelocity = heading * speed;
+            // Move keeps it on the navmesh: it slides along rock rather than into it.
+            agent.Move(flowVelocity * Time.deltaTime);
+            if (heading.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(heading);
+        }
+
+        static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0, v.z);
 
         /// <summary>A crowd packed against a barricade pushes through it.</summary>
         bool UnderPressure()

@@ -44,6 +44,12 @@ Deliberate deviations are marked `DEVIATION` in the code. The main ones:
 - **Rewards.** Each kill pays original budget ÷ spawned budget times its Orc Horde reward, so currency per round matches Orc Horde's.
 - **Sealed roads.** Units that normally avoid walls will chew through a fully sealed road.
 
+## The horde
+
+- **Three times the bodies.** Each unit of pressure is fielded as three orcs, each with a third of the health and a third of the reward (`GameManager.Crowd`), so a round is as hard and pays as well as before but fills the road. Bosses and set pieces are unchanged. Up to 330 orcs can be alive at once.
+- **It flows like Orc Horde's.** The rank and file don't each follow one shortest path (which files them in a line round the inside of every bend). `World/FlowField.cs` gives every metre of road its walking distance to the base, with barricades as holes and bridges and tunnels as one-way shortcuts. Each orc steps towards the lowest neighbouring cell, but every orc already in a cell makes it count as further away (smaller orcs give way more readily), so the crowd spills sideways across the whole road. Overlapping neighbours push apart.
+- **Exceptions.** Bosses, orcs breaking a barricade, orcs lured by a beacon and orcs cut off from the base still path-find on the navmesh. An orc that gains no ground for 3 s does too, for a while, which finds the wall to break if the field missed one.
+
 ## Build phase
 
 Before every wave you have as long as you like. Walk the map, or press M for the tactical view, and lay out the line. The panel on the right briefs the next wave: which gates it uses and how long each walk is, the enemy mix and about how many orcs, bosses and when they arrive, and the horde's toughness. The route lines update as you build, so you can see a barricade line reroute the horde, or seal a road (red) and force a fight at the wall. Placed towers show their reach while you build.
@@ -69,7 +75,7 @@ DEVIATION: Orc Horde's maps are flat. Here a smooth height field (`World/Relief.
 The hills matter in a fight:
 
 - **Height is reach.** A tower's range scales with how high it stands above the road it covers: +12% per metre, from −20% in a dip to +30% on a high ledge. An average ledge is level, so height trades reach between spots rather than adding it overall. The placement ghost's ring and hint show the effect before you build, and inspecting a tower shows it after.
-- **The land blocks sight.** An orc over a crest is hidden from towers and your rifle, and Machine Gun bullets strike the ground. The Arc's pulse won't reach through a hill. The Cannon lobs over everything, so it covers blind spots. The Laser still fires without sight, as before. Its beam runs dead straight from the muzzle through the target's chest and on, bending only where it glances off rock or a barricade, and stopping where it meets the ground.
+- **The land blocks sight.** An orc over a crest is hidden from towers and your rifle, and Machine Gun bullets strike the ground. The Arc's pulse won't reach through a hill. The Cannon lobs over everything, so it covers blind spots. The Laser still fires without sight, as before. Its beam runs straight from the muzzle to the target's chest, then levels out and carries on down the road at chest height, piercing the orcs lined up behind. It bends only where it glances off rock or a barricade, and stops where it meets the ground.
 
 Across the campaign, 5–13% of the road within a tower's reach is hidden by the land.
 

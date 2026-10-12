@@ -20,6 +20,7 @@ namespace OrcHordeFps
             MapBuilder.Build(map, grid, world);
             MapBuilder.BakeNavMesh(map);
             Links.Connect(map);
+            FlowField.Build(map);
 
             var gm = new GameObject("Game").AddComponent<GameManager>();
             var (start, yaw) = MapBuilder.PlayerStart(map, grid);

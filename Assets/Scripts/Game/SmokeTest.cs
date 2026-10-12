@@ -657,7 +657,7 @@ namespace OrcHordeFps
 
         /// <summary>
         /// The worst case for rendering and AI: a full 110 orcs of every kind
-        /// walking the map at normal speed, no towers, frame times measured.
+        /// walking the map at normal speed, no towers, frame times measured. As many as a round may field at once.
         /// </summary>
         IEnumerator Stress()
         {
@@ -665,13 +665,22 @@ namespace OrcHordeFps
             BuildController.ClearLayout();
             gm.HelpOpen = false;
             var kinds = new[] { Enemies.Fodder, Enemies.Fodder, Enemies.Fodder, Enemies.Runner, Enemies.Armoured, Enemies.Shaman, Enemies.SiegeElite, Enemies.Splitter };
-            for (int i = 0; i < 110; i++)
+            for (int i = 0; i < 330; i++)
             {
                 var gate = gm.Map.spawns[i % gm.Map.spawns.Length];
                 Enemy.Spawn(kinds[i % kinds.Length], gm.Map.World(gate.x, gate.y), 6f);
                 if (i % 10 == 9) yield return null;
             }
             yield return new WaitForSeconds(4f);
+            // How far the horde gets in the run: mean walking distance left to the base, before and after.
+            float Left()
+            {
+                float sum = 0;
+                int n = 0;
+                foreach (var e in Enemy.All) { float d = e.Remaining; if (!float.IsInfinity(d)) { sum += d; n++; } }
+                return n > 0 ? sum / n : 0;
+            }
+            float leftBefore = Left();
             var pc = PlayerController.I;
             frameMs.Clear();
             peakAlive = 0;
@@ -692,6 +701,23 @@ namespace OrcHordeFps
                 }
                 yield return null;
             }
+            // From above the thick of the horde, to see how it spreads over the road.
+            if (Enemy.All.Count > 0)
+            {
+                Vector3 front = Enemy.All[0].transform.position;
+                float bestCount = 0;
+                foreach (var e in Enemy.All)
+                {
+                    int near = 0;
+                    foreach (var o in Enemy.All) if ((o.transform.position - e.transform.position).sqrMagnitude < 64f) near++;
+                    if (near > bestCount) { bestCount = near; front = e.transform.position; }
+                }
+                Hud.Hidden = true;
+                yield return Photo($"{gm.Map.id}-crowd", front + new Vector3(0, 22f, -14f), front, 60f);
+                yield return Photo($"{gm.Map.id}-crowd-low", front + new Vector3(10f, 4f, -10f), front, 60f);
+                Hud.Hidden = false;
+            }
+            Log($"stress: {gm.Map.id} horde advanced {leftBefore - Left():0.0} m in 12 s (mean distance left {leftBefore:0} -> {Left():0} m), stranded={Enemy.Stranded}");
             Log($"stress: {gm.Map.id} {Perf()} vertices={Enemy.All.Count * OrcDesigns.Get(Enemies.Fodder, gm.Map.biome).mesh.vertexCount} (approx)");
         }
 

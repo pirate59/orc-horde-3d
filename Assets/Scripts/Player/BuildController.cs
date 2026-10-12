@@ -41,6 +41,8 @@ namespace OrcHordeFps
         /// <summary>Raised whenever something is placed, moved or removed.</summary>
         public static event Action LayoutChanged;
 
+        static BuildController() => LayoutChanged += FlowField.Rebuild;
+
         GameObject ghost;
         LineRenderer rangeRing;
         /// <summary>Which of the grid's three axes the barricade in hand runs along; R turns it.</summary>

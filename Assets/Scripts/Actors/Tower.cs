@@ -291,9 +291,9 @@ namespace OrcHordeFps
         }
 
         /// <summary>
-        /// The laser: a straight beam from the muzzle at the target's chest and on past it,
-        /// piercing every orc on its line. It glances off rock and barricades, bending only
-        /// there, and stops where it meets the ground.
+        /// The laser: a straight beam from the muzzle to the target's chest, then level from
+        /// there, straight on down the road at chest height, piercing every orc on its line. It
+        /// glances off rock and barricades, bending only there, and stops where it meets the ground.
         /// </summary>
         void FireBeam()
         {
@@ -306,11 +306,16 @@ namespace OrcHordeFps
             var points = new List<Vector3> { origin };
             float budget = Range * Def.PathBudgetMultiplier;
             var p = origin;
-            for (int bounce = 0; bounce <= 3 && budget > 0.05f; bounce++)
+            // Down (or up) to the target's chest, then level from there on: straight down the road at
+            // chest height, so it pierces the orcs lined up behind rather than burying itself in the ground.
+            float toTarget = aim.magnitude;
+            bool level = toTarget < 0.5f;
+            for (int leg = 0; leg <= 4 && budget > 0.05f; leg++)
             {
-                bool surface = Physics.Raycast(p, dir, out var hit, budget, Layers.RockMask | Layers.WallMask | Layers.TerrainMask,
+                float reach = level ? budget : Mathf.Min(budget, toTarget);
+                bool surface = Physics.Raycast(p, dir, out var hit, reach, Layers.RockMask | Layers.WallMask | Layers.TerrainMask,
                     QueryTriggerInteraction.Ignore);
-                float len = surface ? hit.distance : budget;
+                float len = surface ? hit.distance : reach;
                 var end = p + dir * len;
                 foreach (var e in Enemy.All.ToArray())
                 {
@@ -321,11 +326,23 @@ namespace OrcHordeFps
                 }
                 points.Add(end);
                 budget -= len;
-                if (!surface) break;
+                if (!surface)
+                {
+                    if (level) break;
+                    // At the target: turn level and carry on.
+                    level = true;
+                    dir.y = 0;
+                    if (dir.sqrMagnitude < 1e-4f) break;
+                    dir.Normalize();
+                    p = end;
+                    continue;
+                }
                 Fx.Burst(end, 0.25f, Def.Color, 0.12f);
                 // The ground ends it; rock and barricades turn it.
                 if (((1 << hit.collider.gameObject.layer) & Layers.TerrainMask) != 0) break;
                 dir = Vector3.Reflect(dir, hit.normal).normalized;
+                if (level) { dir.y = 0; dir.Normalize(); }
+                toTarget -= len;
                 p = end + dir * 0.02f;
             }
             // A glowing beam, motes crackling off along it, a flare at the muzzle and sparks where it strikes.

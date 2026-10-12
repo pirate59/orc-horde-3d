@@ -134,6 +134,7 @@ namespace OrcHordeFps
             rubble.SetActive(true);
             box.enabled = false;
             obstacle.enabled = false;
+            FlowField.Rebuild();
             Fx.Burst(transform.position + Vector3.up, 2.5f, Def.Color, 0.5f);
             Sfx.At("wall_break", transform.position);
         }
@@ -153,6 +154,7 @@ namespace OrcHordeFps
             rubble.SetActive(false);
             box.enabled = true;
             obstacle.enabled = true;
+            FlowField.Rebuild();
         }
 
         public static Barricade Nearest(Vector3 from, float within)

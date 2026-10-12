@@ -344,7 +344,7 @@ namespace OrcHordeFps
             var round = gm.Round;
             var lines = new System.Text.StringBuilder();
             lines.Append($"<b>NEXT WAVE</b>  <color=#bbb>{round.Duration:0}s · base {gm.MaxBaseHealth}</color>\n");
-            float tough = gm.RoundToughness;
+            float tough = gm.RoundHealth;
             if (tough > 1.01f) lines.Append($"<color=#ff8a8a>Orcs have ×{tough:0.0} health</color>\n");
 
             lines.Append("\n<b>Gates</b>\n");
