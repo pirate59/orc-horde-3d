@@ -91,6 +91,19 @@ namespace OrcHordeFps
 
             if (gm.Phase == Phase.Combat)
                 Bar(new Rect(r.x, r.yMax, r.width, S(5)), gm.SpawnProgress, Amber);
+
+            // Shield layers over the base, one pip each, the next one filling as it recharges.
+            if (gm.MaxShields > 0)
+            {
+                float pip = S(14), sx = r.xMax - S(145);
+                for (int i = 0; i < gm.MaxShields; i++)
+                {
+                    var p = new Rect(sx + i * (pip + S(4)), r.yMax + S(8), pip, S(6));
+                    Box(p, new Color(0, 0, 0, 0.6f));
+                    float fill = i < gm.Shields ? 1f : i == gm.Shields ? gm.ShieldRecharge : 0f;
+                    Box(new Rect(p.x, p.y, p.width * fill, p.height), i < gm.Shields ? U.Hex(0x7ad0ff) : new Color(0.48f, 0.82f, 1f, 0.4f));
+                }
+            }
         }
 
         void DrawPlayer()
@@ -122,7 +135,7 @@ namespace OrcHordeFps
         {
             var ab = PlayerAbilities.I;
             if (ab == null) return;
-            float w = S(170), h = S(54);
+            float w = S(190), h = S(54);
             float x = Screen.width / 2f - w - S(6), y = Screen.height - h - S(20);
             DrawAbility(new Rect(x, y, w, h), "Q", ab.Left, ab);
             DrawAbility(new Rect(x + w + S(12), y, w, h), "E", ab.Right, ab);
@@ -130,11 +143,17 @@ namespace OrcHordeFps
 
         void DrawAbility(Rect r, string key, AbilityDef a, PlayerAbilities ab)
         {
+            if (a == null) return;
             Box(r, Panel);
+            Box(new Rect(r.x, r.y, S(4), r.height), a.Color);
             float cd = ab.CooldownLeft(a);
             if (cd > 0) Box(new Rect(r.x, r.y, r.width * cd / Progression.AbilityCooldown(a), r.height), new Color(1, 1, 1, 0.08f));
+            if (a == Abilities.RallyingCry && AbilityFields.RallyLeft > 0)
+                Box(new Rect(r.x, r.yMax - S(4), r.width * AbilityFields.RallyLeft, S(4)), a.Color);
             string state = !ab.Usable ? "<color=#888>in rounds only</color>"
-                : cd > 0 ? $"<color=#ffb347>{cd:0.0}s</color>" : "<color=#5effc4>ready</color>";
+                : cd > 0 ? $"<color=#ffb347>{cd:0.0}s</color>"
+                : ab.AimProblem != null && Input.GetKey(key == "Q" ? KeyCode.Q : KeyCode.E) ? $"<color=#ff8a8a>{ab.AimProblem}</color>"
+                : "<color=#5effc4>ready</color>";
             GUI.Label(new Rect(r.x + S(10), r.y + S(4), r.width, S(24)), $"<b>[{key}]</b> {a.Name}", small);
             GUI.Label(new Rect(r.x + S(10), r.y + S(26), r.width, S(24)), state, small);
         }
@@ -370,78 +389,17 @@ namespace OrcHordeFps
         {
             var r = new Rect(Screen.width - S(240), S(12), S(220), S(70));
             Box(r, Panel);
-            GUI.Label(new Rect(r.x + S(14), r.y + S(6), r.width, S(30)), $"<b>{Progression.Currency:N0}</b> currency", label);
+            GUI.Label(new Rect(r.x + S(14), r.y + S(6), r.width, S(30)), $"<b>{Progression.Currency:N0}</b> currency" +
+                (Progression.Valor + Progression.Glory > 0 ? $"  <color=#7ab8ff>{Progression.Valor}</color> <color=#c08aff>{Progression.Glory}</color>" : ""), label);
             string sub = gm.Phase == Phase.Combat ? $"+{gm.RoundCurrency:N0} this round" : "B: skill tree";
             GUI.Label(new Rect(r.x + S(14), r.y + S(36), r.width, S(26)), $"<color=#bbb>{sub}</color>", small);
         }
 
-        Vector2 shopScroll;
+        readonly SkillWeb web = new SkillWeb();
 
-        /// <summary>
-        /// The skill tree as a list, in the tree's own order. Each row buys the
-        /// node's next level; rows still waiting on a prerequisite say which.
-        /// </summary>
-        void DrawShop(GameManager gm)
-        {
-            Box(new Rect(0, 0, Screen.width, Screen.height), new Color(0, 0, 0, 0.5f));
-            var r = new Rect(Screen.width / 2f - S(460), S(96), S(920), Screen.height - S(130));
-            Box(r, Panel);
-            GUI.Label(new Rect(r.x + S(20), r.y + S(10), r.width, S(40)), "<b>Skill tree</b>", big);
-            GUI.Label(new Rect(r.xMax - S(320), r.y + S(16), S(300), S(30)), $"<b>{Progression.Currency:N0}</b> currency to spend", label);
+        /// <summary>The skill web, as Orc Horde draws it: see <see cref="SkillWeb"/>.</summary>
+        void DrawShop(GameManager gm) => web.Draw(scale);
 
-            var nodes = Progression.Offered;
-            float rowH = S(54), headH = S(34);
-            int groups = 0;
-            for (int i = 0; i < nodes.Count; i++)
-                if (i == 0 || Progression.Group(nodes[i]) != Progression.Group(nodes[i - 1])) groups++;
-            var view = new Rect(r.x + S(16), r.y + S(60), r.width - S(32), r.height - S(120));
-            shopScroll = GUI.BeginScrollView(view, shopScroll, new Rect(0, 0, view.width - S(20), rowH * nodes.Count + headH * groups));
-            var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(15 * scale), richText = true };
-            float y = 0;
-            for (int i = 0; i < nodes.Count; i++)
-            {
-                var n = nodes[i];
-                if (i == 0 || Progression.Group(n) != Progression.Group(nodes[i - 1]))
-                {
-                    GUI.Label(new Rect(S(4), y + S(6), S(400), S(26)), $"<b><color=#5effc4>{Progression.Group(n).ToUpper()}</color></b>", small);
-                    y += headH;
-                }
-                var row = new Rect(0, y, view.width - S(20), rowH - S(4));
-                y += rowH;
-                int level = Progression.Level(n.id);
-                var next = Progression.NextLevel(n);
-                bool ready = Progression.PrerequisitesMet(n);
-                Box(row, level > 0 ? new Color(0.37f, 1f, 0.77f, 0.08f) : new Color(1, 1, 1, 0.03f));
-                GUI.Label(new Rect(row.x + S(10), row.y + S(4), S(330), S(24)), $"<b>{n.name}</b>  <color=#bbb>{level}/{n.levels.Length}</color>", small);
-                string detail = next == null ? "<color=#5effc4>Complete</color>"
-                    : ready ? $"<color=#ccc>{next.label}: {next.description}</color>"
-                    : $"<color=#888>Needs {Needs(n)}</color>";
-                GUI.Label(new Rect(row.x + S(10), row.y + S(26), row.width - S(270), S(24)), detail, small);
-                if (next == null) continue;
-                GUI.enabled = Progression.CanBuy(n);
-                if (GUI.Button(new Rect(row.xMax - S(170), row.y + S(8), S(160), rowH - S(20)), $"Buy · {next.cost:N0}", btn))
-                    Sfx.UI(Progression.Buy(n) ? "ui_buy" : "ui_invalid");
-                // Masteries run to forty levels, so they can be bought five at a time, as in Orc Horde.
-                if (n.mastery && GUI.Button(new Rect(row.xMax - S(250), row.y + S(8), S(72), rowH - S(20)), "×5", btn))
-                    Sfx.UI(Progression.Buy(n, 5) > 0 ? "ui_buy" : "ui_invalid");
-                GUI.enabled = true;
-            }
-            GUI.EndScrollView();
-            GUI.Label(new Rect(r.x + S(20), r.yMax - S(46), r.width - S(40), S(30)),
-                "<color=#bbb>Kills pay currency win or lose; a win adds a bonus, doubled the first time. B or Esc closes.</color>", small);
-        }
-
-        static string Needs(SkillNode n)
-        {
-            var parts = new System.Collections.Generic.List<string>();
-            foreach (var p in n.prerequisites)
-                if (Progression.Level(p.nodeId) < p.minimumLevel)
-                {
-                    var other = System.Array.Find(Progression.Tree.nodes, x => x.id == p.nodeId);
-                    parts.Add($"{other?.name ?? p.nodeId} {p.minimumLevel}");
-                }
-            return string.Join(", ", parts);
-        }
 
         Vector2 mapScroll;
 

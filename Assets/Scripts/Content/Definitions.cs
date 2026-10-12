@@ -102,7 +102,25 @@ namespace OrcHordeFps
     public sealed class AbilityDef
     {
         public string Id, Name, Description;
+        public bool UnlockedByDefault;
         public float Cooldown, Damage, Radius, Length, Width;
+        /// <summary>How long a lasting ability lasts: a slick, a rally, a sentry, a barrage, a beacon.</summary>
+        public float Duration;
+        /// <summary>Emergency Repairs: the share of a barricade's health given back.</summary>
+        public float RepairFraction;
+        /// <summary>Oil Slick: speed multiplier on the slick, chance per second to slip, and how long a slip lasts.</summary>
+        public float SlowFactor, SlipChance, SlipDuration;
+        /// <summary>Rallying Cry: damage bonus every tower gets.</summary>
+        public float DamageBonus;
+        /// <summary>Proximity Mines: how many, and how near something must come to set one off.</summary>
+        public int MineCount;
+        public float TriggerRadius;
+        /// <summary>Artillery Barrage: seconds between shells, and each shell's blast.</summary>
+        public float ShellInterval, ShellRadius;
+        /// <summary>Decoy Beacon: the blast when Overload sets it off.</summary>
+        public float OverloadRadius;
+        /// <summary>The colour its marker, effects and HUD slot carry.</summary>
+        public Color Color = U.Hex(0xff6a3a);
     }
 
 }

@@ -75,7 +75,8 @@ namespace OrcHordeFps
         {
             "unlock_tower", "tower_capacity_delta", "tower_stat_multiplier_delta",
             "wall_capacity_delta", "wall_health_multiplier_delta", "base_health_delta",
-            "ability_stat_multiplier_delta", RifleEffect,
+            "unlock_ability", "ability_stat_multiplier_delta", "ability_trait_delta",
+            "base_shield_layer_delta", "base_shield_recharge_multiplier_delta", RifleEffect,
         };
 
         /// <summary>
@@ -85,7 +86,8 @@ namespace OrcHordeFps
         /// </summary>
         const string RifleEffect = "rifle_stat_multiplier_delta";
 
-        static SkillNode RifleNode(string id, string name, string description, string stat, float amount, int[] costs)
+        static SkillNode RifleNode(string id, string name, string description, string stat, float amount, int[] costs,
+            float x, float y, SkillPrerequisite[] prerequisites)
         {
             var levels = new SkillLevel[costs.Length];
             for (int i = 0; i < costs.Length; i++)
@@ -99,28 +101,42 @@ namespace OrcHordeFps
             return new SkillNode
             {
                 id = id, name = name, description = description, currency = "currency",
-                x = -1, y = -1, prerequisites = new SkillPrerequisite[0], alternatives = new SkillPrerequisite[0], levels = levels,
+                x = x, y = y, prerequisites = prerequisites, alternatives = new SkillPrerequisite[0], levels = levels,
             };
         }
 
+        /// <summary>
+        /// Placed in the web's one gap beside the root, between the walls and the
+        /// base. Rifle Rounds hangs off Gun Nests at level 0, so it is open from
+        /// the start as it always was, but drawn joined to the web.
+        /// </summary>
         static readonly SkillNode[] RifleNodes =
         {
             RifleNode("rifle_damage", "Rifle Rounds", "Heavier rounds for your own rifle.", "damage", 0.15f,
-                new[] { 500, 900, 1500, 2400, 3600, 5200, 7200, 9600 }),
+                new[] { 500, 900, 1500, 2400, 3600, 5200, 7200, 9600 }, -80, 80,
+                new[] { new SkillPrerequisite { nodeId = "machine_gun_capacity", minimumLevel = 0 } }),
             RifleNode("rifle_fire_rate", "Rifle Action", "A faster action for your own rifle.", "fireRate", 0.1f,
-                new[] { 700, 1300, 2100, 3400, 5400, 8000 }),
+                new[] { 700, 1300, 2100, 3400, 5400, 8000 }, -105, 185,
+                new[] { new SkillPrerequisite { nodeId = "rifle_damage", minimumLevel = 1 } }),
         };
 
         static readonly HashSet<string> SupportedTowerStats = new HashSet<string>
             { "damage", "fireRate", "range", "splashRadius", "slowDuration", "coneWidth" };
 
-        static readonly HashSet<string> SupportedAbilities = new HashSet<string> { "mortar", "bombing_run" };
-        static readonly HashSet<string> SupportedAbilityStats = new HashSet<string> { "cooldown", "damage", "radius" };
+        static readonly HashSet<string> SupportedAbilities = new HashSet<string>(Array.ConvertAll(Abilities.All, a => a.Id));
+        static readonly HashSet<string> SupportedAbilityStats = new HashSet<string>
+            { "cooldown", "damage", "radius", "length", "width", "duration", "repair", "slipChance", "shellRate" };
 
         [Serializable]
         sealed class Save
         {
-            public int currency;
+            public int currency, valor, glory;
+            /// <summary>Premium payouts already made, by key, so each is paid once.</summary>
+            public List<string> awards = new List<string>();
+            /// <summary>Rounds won with the base untouched, as map:round: a map of them pays Glory.</summary>
+            public List<string> flawlessRounds = new List<string>();
+            /// <summary>The ability in each hand, Q then E, by id.</summary>
+            public List<string> loadout = new List<string>();
             public List<string> nodeIds = new List<string>();
             public List<int> nodeLevels = new List<int>();
             public List<string> clearedRounds = new List<string>();
@@ -180,18 +196,21 @@ namespace OrcHordeFps
         /// <summary>The line a node belongs to, for grouping: what its first effect works on.</summary>
         public static string Group(SkillNode n)
         {
+            if (n.levels.Length == 0 || n.levels[0].effects.Length == 0) return "Other";
             var e = n.levels[0].effects[0];
             if (e.kind.StartsWith("wall_")) return "Barricades";
             if (e.kind.StartsWith("base_")) return "Base";
             if (e.target == "rifle") return "Rifle";
             foreach (var t in Towers.All) if (t.Id == e.target) return t.Name;
-            if (e.target == Abilities.Mortar.Id) return Abilities.Mortar.Name;
-            if (e.target == Abilities.BombingRun.Id) return Abilities.BombingRun.Name;
-            return "Other";
+            return Abilities.ById(e.target)?.Name ?? "Other";
         }
 
         static readonly string[] GroupOrder =
-            { "Rifle", "Machine Gun", "Cannon", "Laser", "Arc Tower", "Flame Thrower", "Barricades", "Base", "Mortar", "Bombing Run", "Other" };
+        {
+            "Rifle", "Machine Gun", "Cannon", "Laser", "Arc Tower", "Flame Thrower", "Barricades", "Base",
+            "Mortar", "Bombing Run", "Emergency Repairs", "Oil Slick", "Rallying Cry", "Sentry Drop",
+            "Proximity Mines", "Artillery Barrage", "Decoy Beacon", "Other",
+        };
 
         /// <summary>The nodes this game can honour, grouped by line, cheapest first within each.</summary>
         public static IReadOnlyList<SkillNode> Offered
@@ -201,7 +220,7 @@ namespace OrcHordeFps
                 if (offered != null) return offered;
                 var ok = new HashSet<string>();
                 foreach (var n in Tree.nodes)
-                    if (n.currency == "currency" && Array.TrueForAll(n.levels, l => Array.TrueForAll(l.effects, Honoured)))
+                    if (IsSupported(n))
                         ok.Add(n.id);
                 // A node is only reachable if a whole set of its prerequisites is.
                 bool changed = true;
@@ -229,7 +248,50 @@ namespace OrcHordeFps
         static bool Honoured(SkillEffect e) =>
             Supported.Contains(e.kind) &&
             (e.kind != "tower_stat_multiplier_delta" || SupportedTowerStats.Contains(e.stat)) &&
-            (e.kind != "ability_stat_multiplier_delta" || (SupportedAbilities.Contains(e.target) && SupportedAbilityStats.Contains(e.stat)));
+            (e.kind != "ability_stat_multiplier_delta" || (SupportedAbilities.Contains(e.target) && SupportedAbilityStats.Contains(e.stat))) &&
+            (e.kind != "ability_trait_delta" && e.kind != "unlock_ability" || SupportedAbilities.Contains(e.target));
+
+        /// <summary>Whether this game does everything the node's levels do. The rest show in the web but can't be bought yet.</summary>
+        public static bool IsSupported(SkillNode n) => Array.TrueForAll(n.levels, l => Array.TrueForAll(l.effects, Honoured));
+
+        /// <summary>What a currency stands at: currency, Valor or Glory.</summary>
+        public static int Balance(string currencyId) => currencyId switch
+        {
+            "valor" => Data.valor,
+            "glory" => Data.glory,
+            _ => Data.currency,
+        };
+
+        static void Spend(string currencyId, int amount)
+        {
+            switch (currencyId)
+            {
+                case "valor": Data.valor -= amount; break;
+                case "glory": Data.glory -= amount; break;
+                default: Data.currency -= amount; break;
+            }
+        }
+
+        public static int Valor => Data.valor;
+        public static int Glory => Data.glory;
+
+        /// <summary>Orc Horde's skill-web visibility: owned, open to buy, a locked outline one step out, or not drawn.</summary>
+        public enum Visibility { Hidden, Hinted, Open, Owned }
+
+        public static Visibility VisibilityOf(SkillNode n)
+        {
+            if (Level(n.id) > 0) return Visibility.Owned;
+            if (PrerequisitesMet(n)) return Visibility.Open;
+            foreach (var set in new[] { n.prerequisites, n.alternatives })
+                foreach (var p in set)
+                {
+                    var parent = Node(p.nodeId);
+                    if (parent != null && (Level(parent.id) > 0 || PrerequisitesMet(parent))) return Visibility.Hinted;
+                }
+            return Visibility.Hidden;
+        }
+
+        public static SkillNode NodeById(string id) => Node(id);
 
         public static bool PrerequisitesMet(SkillNode n)
         {
@@ -246,7 +308,7 @@ namespace OrcHordeFps
         public static bool CanBuy(SkillNode n)
         {
             var next = NextLevel(n);
-            return next != null && PrerequisitesMet(n) && Data.currency >= next.cost;
+            return next != null && IsSupported(n) && PrerequisitesMet(n) && Balance(n.currency) >= next.cost;
         }
 
         /// <summary>Buys up to <paramref name="levels"/> levels in a row, as far as currency reaches. Returns how many.</summary>
@@ -260,7 +322,7 @@ namespace OrcHordeFps
         public static bool Buy(SkillNode n)
         {
             if (!CanBuy(n)) return false;
-            Data.currency -= NextLevel(n).cost;
+            Spend(n.currency, NextLevel(n).cost);
             int i = Data.nodeIds.IndexOf(n.id);
             if (i < 0) { Data.nodeIds.Add(n.id); Data.nodeLevels.Add(1); }
             else Data.nodeLevels[i]++;
@@ -324,12 +386,61 @@ namespace OrcHordeFps
         public static float WallHealth => Walls.Barricade.Health * (1f + Sum("wall_health_multiplier_delta"));
         public static int BaseHealthBonus => Mathf.RoundToInt(Sum("base_health_delta"));
 
-        public static float AbilityCooldown(AbilityDef a) =>
-            a.Cooldown / Mathf.Max(0.1f, 1f + Sum("ability_stat_multiplier_delta", a.Id, "cooldown"));
-        public static float AbilityDamage(AbilityDef a) =>
-            a.Damage * (1f + Sum("ability_stat_multiplier_delta", a.Id, "damage"));
-        public static float AbilityRadius(AbilityDef a) =>
-            a.Radius * (1f + Sum("ability_stat_multiplier_delta", a.Id, "radius"));
+        public static bool AbilityUnlocked(AbilityDef a) => a.UnlockedByDefault || Has("unlock_ability", a.Id);
+
+        /// <summary>An ability stat's bought bonus: 0.2 for +20%.</summary>
+        public static float AbilityBonus(AbilityDef a, string stat) => Sum("ability_stat_multiplier_delta", a.Id, stat);
+
+        /// <summary>A trait's bought total: a count, a fraction, or 1 for a switch, as Orc Horde's statResolver has it.</summary>
+        public static float AbilityTrait(AbilityDef a, string trait) => Sum("ability_trait_delta", a.Id, trait);
+
+        public static float AbilityCooldown(AbilityDef a) => a.Cooldown / Mathf.Max(0.1f, 1f + AbilityBonus(a, "cooldown"));
+        public static float AbilityDamage(AbilityDef a) => a.Damage * (1f + AbilityBonus(a, "damage"));
+        public static float AbilityRadius(AbilityDef a) => a.Radius * (1f + AbilityBonus(a, "radius"));
+        public static float AbilityDuration(AbilityDef a) => a.Duration * (1f + AbilityBonus(a, "duration"));
+        public static float AbilityRepair(AbilityDef a) => Mathf.Min(1f, a.RepairFraction * (1f + AbilityBonus(a, "repair")));
+        public static float AbilitySlipChance(AbilityDef a) => a.SlipChance * (1f + AbilityBonus(a, "slipChance"));
+        public static float AbilityShellInterval(AbilityDef a) => a.ShellInterval / Mathf.Max(0.1f, 1f + AbilityBonus(a, "shellRate"));
+
+        /// <summary>Shield layers over the base: each soaks one breach whatever it costs.</summary>
+        public static int ShieldLayers => Mathf.Max(0, Mathf.RoundToInt(Sum("base_shield_layer_delta")));
+        /// <summary>Seconds to bring one spent layer back.</summary>
+        public static float ShieldRecharge => 5f / Mathf.Max(0.1f, 1f + Sum("base_shield_recharge_multiplier_delta"));
+
+        /// <summary>
+        /// The two abilities carried into a round, Q then E, as Orc Horde's
+        /// abilityLoadout resolves them: saved choices that are unlocked and not
+        /// repeated, then any gap filled with Mortar, Bombing Run, then whatever
+        /// else is unlocked.
+        /// </summary>
+        public static AbilityDef[] Loadout
+        {
+            get
+            {
+                var slots = new AbilityDef[2];
+                for (int i = 0; i < 2; i++)
+                {
+                    var saved = i < Data.loadout.Count ? Abilities.ById(Data.loadout[i]) : null;
+                    if (saved != null && AbilityUnlocked(saved) && Array.IndexOf(slots, saved) < 0) slots[i] = saved;
+                }
+                var fillers = new List<AbilityDef> { Abilities.Mortar, Abilities.BombingRun };
+                fillers.AddRange(Abilities.All);
+                for (int i = 0; i < 2; i++)
+                    if (slots[i] == null)
+                        slots[i] = fillers.Find(a => AbilityUnlocked(a) && Array.IndexOf(slots, a) < 0);
+                return slots;
+            }
+        }
+
+        /// <summary>Puts an ability in a hand. If it was in the other hand, the two swap.</summary>
+        public static void Equip(int slot, AbilityDef ability)
+        {
+            var current = Loadout;
+            if (current[1 - slot] == ability) current[1 - slot] = current[slot];
+            current[slot] = ability;
+            Data.loadout = new List<string> { current[0]?.Id ?? "", current[1]?.Id ?? "" };
+            Persist();
+        }
 
         /// <summary>Position of a round across the whole campaign, for the completion bonus. Off-campaign maps count as the start.</summary>
         static int CampaignRoundIndex(MapData map, int round)
@@ -346,17 +457,25 @@ namespace OrcHordeFps
 
         public struct RoundReward
         {
-            public int Kills, Completion;
+            public int Kills, Completion, Valor, Glory;
             public bool FirstClear;
             public int Total => Kills + Completion;
         }
 
         /// <summary>Pays out a finished round, as Orc Horde's settleRoundAttempt does.</summary>
-        public static RoundReward Settle(MapData map, int round, float killCurrency, bool victory)
+        public static RoundReward Settle(MapData map, int round, float killCurrency, bool victory, bool flawless = false)
         {
             var reward = new RoundReward { Kills = Mathf.Max(0, Mathf.RoundToInt(killCurrency)) };
             if (victory)
             {
+                // Orc Horde's premium payouts, each once per campaign: Valor for the first win of a
+                // round with a set-piece boss, Glory once every round of a map has been won flawless.
+                if (map.rounds[round].bosses.Length > 0 && Claim($"valor:{map.id}:{round}")) { Data.valor++; reward.Valor = 1; }
+                if (flawless && !Data.flawlessRounds.Contains($"{map.id}:{round}")) Data.flawlessRounds.Add($"{map.id}:{round}");
+                bool allFlawless = true;
+                for (int i = 0; i < map.rounds.Length; i++) allFlawless &= Data.flawlessRounds.Contains($"{map.id}:{i}");
+                if (allFlawless && Claim($"glory:{map.id}")) { Data.glory++; reward.Glory = 1; }
+
                 string key = $"{map.id}:{round}";
                 reward.FirstClear = !Data.clearedRounds.Contains(key);
                 if (reward.FirstClear) Data.clearedRounds.Add(key);
@@ -366,6 +485,37 @@ namespace OrcHordeFps
             Data.currency += reward.Total;
             Persist();
             return reward;
+        }
+
+        /// <summary>Records a once-only award as paid. False if it already was.</summary>
+        static bool Claim(string key)
+        {
+            if (Data.awards.Contains(key)) return false;
+            Data.awards.Add(key);
+            return true;
+        }
+
+        /// <summary>For the smoke test: every node that touches an ability, bought to the top, free.</summary>
+        public static void GrantAbilitiesForTest()
+        {
+            foreach (var n in Tree.nodes)
+            {
+                bool ability = Array.Exists(n.levels, l => Array.Exists(l.effects, e => e.kind.StartsWith("ability_") || e.kind == "unlock_ability"));
+                if (!ability) continue;
+                int i = Data.nodeIds.IndexOf(n.id);
+                if (i < 0) { Data.nodeIds.Add(n.id); Data.nodeLevels.Add(n.levels.Length); }
+                else Data.nodeLevels[i] = n.levels.Length;
+            }
+            Persist();
+        }
+
+        /// <summary>For the smoke test: a purse to spend.</summary>
+        public static void GrantForTest(int currency, int valor, int glory)
+        {
+            Data.currency += currency;
+            Data.valor += valor;
+            Data.glory += glory;
+            Persist();
         }
 
         /// <summary>Back to a fresh campaign: no currency, no skills, no clears.</summary>

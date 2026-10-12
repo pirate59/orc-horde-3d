@@ -13,11 +13,11 @@ Open the project in Unity Hub and open `Assets/Scenes/QuarryRoad.unity` (it open
 | Move | WASD, Shift to sprint, Space to jump |
 | Shoot | Left mouse, R to reload. Headshots do ×2 |
 | Aim down the sight | Hold right mouse: zoomed view through the holo reticle, tighter grouping, less recoil, slower movement, no sprint |
-| Abilities | Hold Q (Mortar) or E (Bombing Run) to aim, release to fire |
+| Abilities | Hold Q or E to aim the ability in that hand, release to fire (Rallying Cry fires on the press) |
 | Build (between rounds) | 1–5 for towers, 6 for barricade, R to turn a barricade, left click to place, F to pick up and move, X or right click to remove, 0 to put away |
 | Tactical view (between rounds) | M. WASD pan, Q/E turn, wheel zoom, place with the mouse, T to drop in on foot there |
 | Route preview | V toggles the lines from each gate to the base; red means a road is sealed and orcs will break through |
-| Skill tree (between rounds) | B or Tab |
+| Skill web (between rounds) | B or Tab; drag to pan, wheel to zoom, click a node |
 | Start the wave / continue | G |
 | Help / pause | H / Esc |
 
@@ -28,10 +28,13 @@ Ported from `orc-horde/src/content`. The original numbers are kept in their orig
 - **Towers:** Machine Gun, Cannon (lobs over barricades), Laser (pierces and ricochets), Arc Tower (slows), Flame Thrower (cone)
 - **Enemies:** Fodder, Runner, Armoured, Siege Elite, Siege Breaker, Siege Boss, Sapper, Shaman, Splitter, with armour using the original quarter-damage floor
 - **Barricade:** a run of 3 hex cells along one of the grid's three axes, as in Orc Horde; 8 per layout, carves the navmesh with its ends fused to the rock or the next wall, restored on every attempt
-- **Abilities:** Mortar and Bombing Run
+- **Abilities:** all nine, two carried at a time, one per hand: Mortar, Bombing Run, Emergency Repairs, Oil Slick, Rallying Cry, Sentry Drop, Proximity Mines, Artillery Barrage and Decoy Beacon, with every stat upgrade and trait (Rebuild, Tar, Twin and Cannon Sentries, Chain Reaction, Ignore Armour, Incendiary, Static Field, Overload, Fool Bosses). The loadout is chosen in the skill web.
+- **Base shields:** each layer soaks one breach whatever it costs, and spent layers come back one at a time (5 s, quicker with Recharge). A boss that walks in still takes the round.
 - **Maps:** all 14 campaign maps and both test grounds, with every round, spawn gate, boss event, bridge and tunnel
 - **Bosses:** Siege Boss, Ram Chief (charges), Shieldwall (frontal shield), Warlord (summons a war band), Blood Totem (heals and regenerates)
-- **Progression:** the skill tree's currency nodes (tower unlocks, capacity, damage, fire rate, range, splash, slow, cone, barricade count and health, base health, Mortar and Bombing Run upgrades) and the eight 40-level masteries, with Orc Horde's economy. Kills pay win or lose; a win adds kills × (1 + 5% per campaign round), doubled on a first clear. Nodes with effects the FPS doesn't have yet (shields, traits, the seven later abilities) are hidden. An FPS-only Rifle line keeps your own gun in step.
+- **Progression:** Orc Horde's skill web, drawn as it is there: nodes at their authored positions, joined by their requirements, panned and zoomed beside a detail panel. Owned and open nodes are named, the next ring out is a locked outline, and anything further is hidden until you get close. Each node is outlined in what it costs: gold currency, blue Valor or violet Glory. Kills pay currency win or lose; a win adds kills × (1 + 5% per campaign round), doubled on a first clear. Valor comes from the first win of each boss round, and Glory from winning every round of a map without the base taking a hit. Blueprints open their shortcuts. An FPS-only Rifle line, hung off Gun Nests, keeps your own gun in step.
+
+  Not yet brought over: tower traits (Twin Mounts, Cluster Shells, Split Beam, Chain Arc, Napalm and the rest), Expansion's longer barricades, towers on barricades, Thorns and Last Stand. Their nodes show in the web, greyed, and can't be bought.
 
 Deliberate deviations are marked `DEVIATION` in the code. The main ones:
 
@@ -171,6 +174,12 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/gallery" -smokegal
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/relief" -smokerelief canyon_approach,draw_green
+```
+
+**Abilities:** photographs the skill web on a fresh save and a grown one, then unlocks every ability and trait, lets the horde in, fires each ability into it and logs what it did (kills, slowed, lured, sentries, the rally, barricade health) with a photo of each:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/abilities" -smokeabilities canyon_approach
 ```
 
 **Armoury:** all five towers firing at immortal puppet orcs, then a close-up of each tower and the rifle idle, firing and reloading:

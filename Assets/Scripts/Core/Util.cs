@@ -314,7 +314,7 @@ namespace OrcHordeFps
         public static float AfterArmour(float raw, float armour) => Mathf.Max(raw - armour, raw * 0.25f);
 
         /// <summary>Hurts every orc within <paramref name="radius"/> of a point, on the flat.</summary>
-        public static void Splash(Vector3 center, float radius, float damage, HashSet<Enemy> skip = null)
+        public static void Splash(Vector3 center, float radius, float damage, HashSet<Enemy> skip = null, float armourPierce = 0f)
         {
             // Backwards, so a kill removing itself (or a Splitter appending its brood) never skips anyone.
             for (int i = Enemy.All.Count - 1; i >= 0; i--)
@@ -327,7 +327,7 @@ namespace OrcHordeFps
                 float reach = radius + e.Def.Radius;
                 if (d.sqrMagnitude > reach * reach) continue;
                 skip?.Add(e);
-                e.TakeDamage(damage);
+                e.TakeDamage(damage, armourPierce: armourPierce);
             }
         }
     }

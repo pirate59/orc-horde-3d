@@ -138,6 +138,13 @@ namespace OrcHordeFps
             Sfx.At("wall_break", transform.position);
         }
 
+        /// <summary>Emergency Repairs: gives back a share of its health, up to full.</summary>
+        public void Repair(float fraction)
+        {
+            if (!Standing) return;
+            Health = Mathf.Min(MaxHealth, Health + MaxHealth * fraction);
+        }
+
         public void Restore()
         {
             Standing = true;

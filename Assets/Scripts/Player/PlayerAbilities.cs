@@ -5,8 +5,10 @@ using UnityEngine;
 namespace OrcHordeFps
 {
     /// <summary>
-    /// Orc Horde's two hands: Mortar on Q, Bombing Run on E. Hold to aim at the
-    /// crosshair, release to call it in.
+    /// Orc Horde's two hands: the loadout's left ability on Q, its right on E,
+    /// Mortar and Bombing Run until the skill tree opens others. Hold to aim at
+    /// the crosshair, release to call it in. The Rallying Cry needs no aim:
+    /// it goes the moment the key does.
     /// </summary>
     public sealed class PlayerAbilities : MonoBehaviour
     {
@@ -17,8 +19,11 @@ namespace OrcHordeFps
         const float StrafeSeconds = 0.8f;
         const int StrafeBursts = 9;
 
-        public AbilityDef Left { get; } = Abilities.Mortar;
-        public AbilityDef Right { get; } = Abilities.BombingRun;
+        public AbilityDef Left => Progression.Loadout[0];
+        public AbilityDef Right => Progression.Loadout[1];
+
+        /// <summary>Why the crosshair's spot won't take the ability being aimed, for the HUD; null when it will.</summary>
+        public string AimProblem { get; private set; }
 
         readonly Dictionary<AbilityDef, float> readyAt = new Dictionary<AbilityDef, float>();
         LineRenderer marker;
@@ -40,6 +45,7 @@ namespace OrcHordeFps
         void Update()
         {
             marker.enabled = false;
+            AimProblem = null;
             if (!Usable) { aiming = null; return; }
 
             Handle(KeyCode.Q, Left);
@@ -48,29 +54,57 @@ namespace OrcHordeFps
 
         void Handle(KeyCode key, AbilityDef ability)
         {
-            if (CooldownLeft(ability) > 0f) return;
+            if (ability == null || CooldownLeft(ability) > 0f) return;
+            if (ability == Abilities.RallyingCry)
+            {
+                if (Input.GetKeyDown(key)) Fire(ability, transform.position, transform.forward);
+                return;
+            }
             if (Input.GetKeyDown(key)) aiming = ability;
             if (aiming != ability) return;
 
             bool onTarget = TryAim(out var point, out var forward);
+            if (onTarget) AimProblem = Problem(ability, point);
             if (Input.GetKey(key))
             {
                 if (onTarget) DrawMarker(ability, point, forward);
                 return;
             }
 
-            // Released: call it in, or let it go if the crosshair was on the sky.
+            // Released: call it in, or let it go if the crosshair was on the sky or the spot won't take it.
             aiming = null;
-            if (onTarget) Fire(ability, point, forward);
+            if (!onTarget) return;
+            if (AimProblem != null) { Sfx.UI("ui_invalid"); return; }
+            Fire(ability, point, forward);
+        }
+
+        /// <summary>Mines and slicks go on the road, where the horde walks; a sentry on any open ground, not on rock.</summary>
+        static string Problem(AbilityDef ability, Vector3 point)
+        {
+            if ((ability == Abilities.ProximityMines || ability == Abilities.OilSlick) && !AbilityFields.OnRoad(point))
+                return "Aim at the road";
+            if ((ability == Abilities.SentryDrop || ability == Abilities.DecoyBeacon) && !AbilityFields.OpenGround(point))
+                return "Aim at open ground";
+            return null;
         }
 
         /// <summary>Calls an ability in at a point, if it is off cooldown. Returns whether it fired.</summary>
-        public bool Fire(AbilityDef ability, Vector3 point, Vector3 forward)
+        public bool Fire(AbilityDef ability, Vector3 point, Vector3 forward, bool force = false)
         {
-            if (!Usable || CooldownLeft(ability) > 0f) return false;
+            if (!force && (!Usable || CooldownLeft(ability) > 0f)) return false;
             readyAt[ability] = Time.time + Progression.AbilityCooldown(ability);
-            if (ability == Abilities.Mortar) StartCoroutine(Mortar(point));
-            else StartCoroutine(BombingRun(point, forward));
+            switch (ability.Id)
+            {
+                case "mortar": StartCoroutine(Mortar(point)); break;
+                case "bombing_run": StartCoroutine(BombingRun(point, forward)); break;
+                case "emergency_repairs": AbilityFields.Repair(point, ability); break;
+                case "oil_slick": AbilityFields.Spill(point, ability); break;
+                case "rallying_cry": AbilityFields.StartRally(ability); break;
+                case "sentry_drop": AbilityFields.DropSentries(point, forward, ability); break;
+                case "proximity_mines": AbilityFields.LayMines(point, ability); break;
+                case "artillery_barrage": AbilityFields.CallBarrage(point, ability); break;
+                case "decoy_beacon": AbilityFields.PlantBeacon(point, ability); break;
+            }
             return true;
         }
 
@@ -90,10 +124,16 @@ namespace OrcHordeFps
         void DrawMarker(AbilityDef ability, Vector3 point, Vector3 forward)
         {
             marker.enabled = true;
+            var c = AimProblem == null ? ability.Color : new Color(1f, 0.3f, 0.3f);
+            marker.startColor = marker.endColor = c;
             var lift = point + Vector3.up * 0.08f;
-            if (ability.Radius > 0)
+            // A sentry shows what it will cover; everything else its own reach.
+            float radius = ability == Abilities.SentryDrop
+                ? Progression.Tower(Progression.AbilityTrait(ability, "sentryCannon") > 0 ? Towers.Cannon : Towers.MachineGun).Range
+                : Progression.AbilityRadius(ability);
+            if (radius > 0)
             {
-                Fx.SetCircle(marker, lift, Progression.AbilityRadius(ability));
+                Fx.SetGroundCircle(marker, point, radius);
                 return;
             }
             var right = Vector3.Cross(Vector3.up, forward) * ability.Width / 2;

@@ -95,7 +95,8 @@ function exportSkills() {
       effects: l.effects.map((e) => ({
         kind: e.kind,
         target: e.towerTypeId ?? e.abilityId ?? "",
-        stat: e.stat ?? "",
+        // A trait rides in the stat field: which trait an ability_ or tower_trait_delta adds to.
+        stat: e.stat ?? e.trait ?? "",
         amount: e.amount ?? 0,
       })),
     })),

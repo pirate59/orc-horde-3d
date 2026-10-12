@@ -82,6 +82,17 @@ namespace OrcHordeFps
         public int BaseHealth { get; private set; }
         /// <summary>The round's base health plus the skill tree's fortification.</summary>
         public int MaxBaseHealth => Round.startingHealth + Progression.BaseHealthBonus;
+
+        /// <summary>
+        /// Shield layers over the base, as Orc Horde has them: each one soaks a
+        /// whole breach, whatever it would have cost, and a spent layer comes
+        /// back one at a time on <see cref="Progression.ShieldRecharge"/>.
+        /// </summary>
+        public int Shields { get; private set; }
+        public int MaxShields => Progression.ShieldLayers;
+        /// <summary>How far the next layer is from coming back, 0 to 1.</summary>
+        public float ShieldRecharge => Shields >= MaxShields ? 1f : 1f - shieldTimer / Progression.ShieldRecharge;
+        float shieldTimer;
         public int Kills { get; private set; }
         /// <summary>Currency earned by kills this round, paid out when it ends.</summary>
         public float RoundCurrency { get; private set; }
@@ -125,6 +136,8 @@ namespace OrcHordeFps
             Phase = Phase.Build;
             RoundTime = 0;
             BaseHealth = MaxBaseHealth;
+            Shields = MaxShields;
+            shieldTimer = 0;
             RoundCurrency = 0;
             ClearHorde();
             foreach (var b in Barricade.All) b.Restore();
@@ -176,6 +189,12 @@ namespace OrcHordeFps
             }
             if (Input.GetKeyDown(KeyCode.H)) HelpOpen = !HelpOpen;
             if (Paused) return;
+            if (Phase == Phase.Combat && Shields < MaxShields)
+            {
+                if (shieldTimer <= 0) shieldTimer = Progression.ShieldRecharge;
+                shieldTimer -= Time.deltaTime;
+                if (shieldTimer <= 0) { Shields++; Sfx.UI("ui_buy", 0.5f); }
+            }
             if ((Input.GetKeyDown(KeyCode.B) || Input.GetKeyDown(KeyCode.Tab)) && Phase != Phase.Combat) ShopOpen = !ShopOpen;
             if (ShopOpen && Input.GetKeyDown(KeyCode.Escape)) ShopOpen = false;
 
@@ -292,6 +311,16 @@ namespace OrcHordeFps
         public void OnBreach(Enemy e)
         {
             if (Phase != Phase.Combat) return;
+            if (Shields > 0)
+            {
+                Shields--;
+                if (shieldTimer <= 0) shieldTimer = Progression.ShieldRecharge;
+                Sfx.UI("laser_zap", 0.8f);
+                Fx.Ring(Map.Base + Vector3.up * 1.5f, 5f, U.Hex(0x7ad0ff), 0.5f);
+                // A boss that walks in still takes the round: the shield turns a blow, not a siege.
+                if (e.Def.BreachLosesRound) Lose($"The {e.Def.Name} reached the {Map.endpoint.name}.");
+                return;
+            }
             BaseHealth = Mathf.Max(0, BaseHealth - e.Def.BreachDamage);
             Sfx.UI("breach", 0.7f);
             Fx.Burst(Map.Base + Vector3.up * 2, 3f, U.Hex(0xff4a4a), 0.4f);
@@ -302,11 +331,13 @@ namespace OrcHordeFps
         /// <summary>Pays the round out and says what it paid.</summary>
         string Settle(bool victory)
         {
-            var reward = Progression.Settle(Map, RoundIndex, RoundCurrency, victory);
+            var reward = Progression.Settle(Map, RoundIndex, RoundCurrency, victory, flawless: BaseHealth >= MaxBaseHealth);
             LastReward = reward;
             RoundCurrency = 0;
             string bonus = reward.Completion > 0 ? $" + {reward.Completion} victory{(reward.FirstClear ? " (first clear ×2)" : "")}" : "";
-            return $"Earned {reward.Kills}{bonus}.  B: skill tree.";
+            string premium = (reward.Valor > 0 ? "  <color=#7ab8ff>+1 Valor</color> for a boss round won." : "") +
+                             (reward.Glory > 0 ? $"  <color=#c08aff>+1 Glory</color>: every round of {Map.name} won without a scratch." : "");
+            return $"Earned {reward.Kills}{bonus}.{premium}  B: skill tree.";
         }
 
         void Win()
@@ -344,6 +375,7 @@ namespace OrcHordeFps
         void ClearHorde()
         {
             foreach (var e in Enemy.All.ToArray()) e.Die(killed: false);
+            AbilityFields.Clear();
         }
 
         public void SetPaused(bool paused)

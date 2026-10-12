@@ -110,7 +110,7 @@ namespace OrcHordeFps
             agent.autoTraverseOffMeshLink = false;
             // Big units shoulder through; small ones give way.
             agent.avoidancePriority = Mathf.Clamp(70 - Mathf.RoundToInt(def.Radius * 40), 10, 90);
-            if (agent.isOnNavMesh) agent.SetDestination(GameManager.I.Map.Base);
+            if (agent.isOnNavMesh) agent.SetDestination(Goal);
 
             nextThink = Time.time + Random.value;
             nextCharge = Time.time + def.ChargeInterval;
@@ -190,6 +190,25 @@ namespace OrcHordeFps
         /// <summary>Set alight by a Flame Thrower: it flickers orange and sheds embers while it burns.</summary>
         public void Burn(float duration) => burnUntil = Mathf.Max(burnUntil, Time.time + duration);
 
+        /// <summary>
+        /// Where it is headed: the base, or a Decoy Beacon it has been drawn to.
+        /// Every re-path asks, so a beacon burning out sends it back on its way.
+        /// </summary>
+        public Vector3 Goal => AbilityFields.LureFor(this) ?? GameManager.I.Map.Base;
+
+        /// <summary>Heads for its goal again now, not at its next think: a beacon has gone up or gone out.</summary>
+        public void Repath()
+        {
+            if (Alive && !puppet && agent != null && agent.isOnNavMesh && wallTarget == null && crossing == null)
+                agent.SetDestination(Goal);
+        }
+
+        /// <summary>Under a slow right now: an Arc pulse, an oil slick, a beacon's field.</summary>
+        public bool SlowedNow => Time.time < slowUntil && slowFactor < 1f;
+
+        /// <summary>Whether it is off its route, swarming a Decoy Beacon.</summary>
+        public bool Lured => AbilityFields.LureFor(this).HasValue;
+
         public void Slow(float factor, float duration)
         {
             slowFactor = Mathf.Min(factor, Time.time < slowUntil ? slowFactor : 1f);
@@ -198,7 +217,8 @@ namespace OrcHordeFps
 
         /// <summary>Returns the damage actually dealt, after armour.</summary>
         /// <param name="from">Where the hit came from; null for blows from above, which no shield stops.</param>
-        public float TakeDamage(float raw, bool headshot = false, Vector3? from = null)
+        /// <param name="armourPierce">The share of its armour a hit ignores: Proximity Mines' Ignore Armour.</param>
+        public float TakeDamage(float raw, bool headshot = false, Vector3? from = null, float armourPierce = 0f)
         {
             if (!Alive || !Targetable) return 0f;
             if (puppet) { flashUntil = Time.time + 0.06f; orc?.Flinch(0.3f); return 0f; }
@@ -211,7 +231,7 @@ namespace OrcHordeFps
                     raw *= 1f - Def.ShieldReduction;
             }
             lastHurt = Time.time;
-            float dealt = Damage.AfterArmour(raw, Def.Armour);
+            float dealt = Damage.AfterArmour(raw, Def.Armour * (1f - Mathf.Clamp01(armourPierce)));
             Health -= dealt;
             flashUntil = Time.time + 0.06f;
             orc?.Flinch(Mathf.Clamp01(dealt / Mathf.Max(MaxHealth, 1f) * 6f + 0.15f));
@@ -355,7 +375,7 @@ namespace OrcHordeFps
             agent.Warp(crossTo);
             agent.updatePosition = true;
             agent.isStopped = false;
-            agent.SetDestination(GameManager.I.Map.Base);
+            agent.SetDestination(Goal);
         }
 
         void SetTargetable(bool value)
@@ -471,7 +491,7 @@ namespace OrcHordeFps
                 return;
             }
 
-            if (wallTarget == null) agent.SetDestination(GameManager.I.Map.Base);
+            if (wallTarget == null) agent.SetDestination(Goal);
         }
 
         /// <summary>A crowd packed against a barricade pushes through it.</summary>
@@ -490,7 +510,7 @@ namespace OrcHordeFps
             {
                 wallTarget = null;
                 agent.isStopped = false;
-                agent.SetDestination(GameManager.I.Map.Base);
+                agent.SetDestination(Goal);
                 return;
             }
 
@@ -530,7 +550,7 @@ namespace OrcHordeFps
             {
                 wallTarget = null;
                 agent.isStopped = false;
-                agent.SetDestination(GameManager.I.Map.Base);
+                agent.SetDestination(Goal);
             }
         }
 

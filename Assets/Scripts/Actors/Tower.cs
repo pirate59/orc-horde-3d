@@ -45,7 +45,22 @@ namespace OrcHordeFps
         /// <summary>What height adds to (or takes from) its reach: see <see cref="Relief.RangeFactor"/>.</summary>
         public float RangeFactor { get; private set; } = 1f;
         /// <summary>Its reach: the upgraded range, stretched or shrunk by the ground it stands on.</summary>
-        public float Range => Stats.Range * RangeFactor;
+        public float Range => Stats.Range * RangeFactor * (1f + AbilityFields.Rally.Range);
+
+        /// <summary>Its hit, with the Rallying Cry and, for a sentry, the drop's own multiplier.</summary>
+        public float Damage => Stats.Damage * damageMultiplier * (1f + AbilityFields.Rally.Damage);
+
+        /// <summary>Seconds between shots, quicker under a rally with fire rate in it.</summary>
+        public float Interval => Stats.FireInterval / (1f + AbilityFields.Rally.FireRate);
+
+        /// <summary>
+        /// Dropped by Sentry Drop: on the field for a while, then gone. It isn't one
+        /// of the player's towers: it counts against no limit, isn't saved with the
+        /// layout and can't be picked up.
+        /// </summary>
+        public bool IsSentry { get; private set; }
+        public static readonly List<Tower> Sentries = new List<Tower>();
+        float damageMultiplier = 1f, expiresAt = float.MaxValue;
 
         Transform head, muzzle;
         TowerRig rig;
@@ -60,7 +75,15 @@ namespace OrcHordeFps
         /// <summary>Fire whatever the phase: for the smoke test's armoury, which shows towers working between rounds.</summary>
         public static bool AlwaysArmed;
 
-        public static Tower Create(TowerDef def, Vector3 position)
+        public static Tower Sentry(TowerDef def, Vector3 position, float lifetime, float damageMultiplier)
+        {
+            var t = Create(def, position, sentry: true);
+            t.expiresAt = Time.time + lifetime;
+            t.damageMultiplier = damageMultiplier;
+            return t;
+        }
+
+        public static Tower Create(TowerDef def, Vector3 position, bool sentry = false)
         {
             var go = new GameObject(def.Name);
             go.transform.position = position;
@@ -71,14 +94,16 @@ namespace OrcHordeFps
             t.muzzle = t.rig.Muzzle;
             t.idleSeed = Random.value * 10f;
             t.glowBlock = new MaterialPropertyBlock();
-            if (GameManager.I != null && GameManager.I.Grid != null)
+            if (!sentry && GameManager.I != null && GameManager.I.Grid != null)
                 t.RangeFactor = Relief.RangeFactor(GameManager.I.Grid.CellAt(position), def.Range);
             var col = go.AddComponent<CapsuleCollider>();
             col.radius = def.Footprint;
             col.height = 2f;
             col.center = new Vector3(0, 1f, 0);
             Layers.SetRecursive(go, Layers.Tower);
-            All.Add(t);
+            t.IsSentry = sentry;
+            if (sentry) Sentries.Add(t);
+            else All.Add(t);
             return t;
         }
 
@@ -87,13 +112,21 @@ namespace OrcHordeFps
 
         void Update()
         {
+            if (Time.time >= expiresAt)
+            {
+                // Powers down: a puff of smoke and it's gone.
+                Fx.Burst(transform.position + Vector3.up, 1.2f, new Color(0.6f, 0.6f, 0.6f), 0.4f);
+                Sfx.At("ui_remove", transform.position);
+                Destroy(gameObject);
+                return;
+            }
             Animate();
             if (GameManager.I.Phase != Phase.Combat && !AlwaysArmed) { target = null; return; }
             cooldown -= Time.deltaTime;
 
             if (Def.Kind == AttackKind.PulseAoe)
             {
-                if (cooldown <= 0f && AnyInRange()) { cooldown = Stats.FireInterval; Pulse(); }
+                if (cooldown <= 0f && AnyInRange()) { cooldown = Interval; Pulse(); }
                 return;
             }
 
@@ -110,7 +143,7 @@ namespace OrcHordeFps
                 head.rotation = Quaternion.RotateTowards(head.rotation, Quaternion.LookRotation(to), TurnDegreesPerSecond * Time.deltaTime);
             AimPitch();
             if (cooldown > 0f || Vector3.Angle(head.forward, to) > 12f) return;
-            cooldown = Stats.FireInterval;
+            cooldown = Interval;
             lastFired = Time.time;
 
             switch (Def.Kind)
@@ -227,7 +260,7 @@ namespace OrcHordeFps
         void FireBullet()
         {
             var aim = Lead(target, Def.ProjectileSpeed);
-            Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, Stats.Damage, SightMask);
+            Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, Damage, SightMask);
             Sfx.At("mg_shot", muzzle.position);
             Fx.Burst(muzzle.position, 0.28f, U.Hex(0xffd27a), 0.05f);
             // Spent brass, out of the right side and onto the ground.
@@ -240,7 +273,7 @@ namespace OrcHordeFps
         {
             var aim = Lead(target, Def.ProjectileSpeed);
             aim.y = target.transform.position.y;
-            Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Stats.Splash, Stats.Damage, Def.Color);
+            Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Stats.Splash, Damage, Def.Color);
             Sfx.At("cannon_fire", muzzle.position);
             Fx.Burst(muzzle.position, 0.6f, U.Hex(0xffd27a), 0.1f);
             kick = 0.24f;
@@ -279,7 +312,7 @@ namespace OrcHordeFps
                     if (!e.Alive || !e.Targetable || struck.Contains(e)) continue;
                     if (DistanceToSegment(e.transform.position, p, end) > e.Def.Radius + 0.15f) continue;
                     struck.Add(e);
-                    e.TakeDamage(Stats.Damage, from: Chest(p));
+                    e.TakeDamage(Damage, from: Chest(p));
                 }
                 // Laid along the land in short steps, so the beam reads over a rise.
                 int steps = Mathf.Max(1, Mathf.CeilToInt(len / 1.5f));
@@ -317,7 +350,7 @@ namespace OrcHordeFps
                 // The pulse arcs over rock as it always has, but not through a hill.
                 if (!Valid(e) || Physics.Linecast(muzzle.position, e.AimPoint, Layers.TerrainMask, QueryTriggerInteraction.Ignore)) continue;
                 e.Slow(Def.SlowFactor, Stats.SlowDuration);
-                e.TakeDamage(Stats.Damage, from: transform.position);
+                e.TakeDamage(Damage, from: transform.position);
                 // A bolt from the crystal to every orc caught in the pulse.
                 if (e.Targetable) Fx.Lightning(muzzle.position, e.AimPoint, Def.Color);
             }
@@ -335,7 +368,7 @@ namespace OrcHordeFps
                 var to = e.transform.position - transform.position;
                 to.y = 0;
                 if (Vector3.Angle(head.forward, to) > half || !CanSee(e)) continue;
-                e.TakeDamage(Stats.Damage, from: transform.position);
+                e.TakeDamage(Damage, from: transform.position);
                 e.Burn(0.8f);
             }
             Sfx.At("flame_burst", muzzle.position);
@@ -359,6 +392,10 @@ namespace OrcHordeFps
             return e.AimPoint + v * t;
         }
 
-        void OnDestroy() => All.Remove(this);
+        void OnDestroy()
+        {
+            All.Remove(this);
+            Sentries.Remove(this);
+        }
     }
 }

@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest, gallery, stress, armory, relief;
+        static bool buildTest, gallery, stress, armory, relief, abilitiesTest;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -76,6 +76,11 @@ namespace OrcHordeFps
                     if (args[i] == "-smokebuild")
                     {
                         buildTest = true;
+                        queue = new Queue<string>(new[] { args[i + 1] });
+                    }
+                    if (args[i] == "-smokeabilities")
+                    {
+                        abilitiesTest = true;
                         queue = new Queue<string>(new[] { args[i + 1] });
                     }
                     if (args[i] == "-smokerelief")
@@ -119,6 +124,14 @@ namespace OrcHordeFps
             {
                 Invoke(nameof(GiveUp), 120f);
                 yield return Armory();
+                Log("done");
+                Application.Quit();
+                yield break;
+            }
+            if (abilitiesTest)
+            {
+                Invoke(nameof(GiveUp), 150f);
+                yield return AbilitiesTest();
                 Log("done");
                 Application.Quit();
                 yield break;
@@ -910,6 +923,98 @@ namespace OrcHordeFps
             yield return Photo($"{map.id}-relief-ledge", stand + (stand - view).normalized * 3f + Vector3.up * 2.2f, view, 62f);
 
             Hud.Hidden = false;
+            Time.timeScale = 1f;
+        }
+
+        /// <summary>
+        /// The skill web, fresh and well grown, then every ability fired into a
+        /// live horde, each logged by what it did and photographed doing it.
+        /// </summary>
+        IEnumerator AbilitiesTest()
+        {
+            var gm = GameManager.I;
+            var map = gm.Map;
+
+            // The web on a fresh save: the root and what it opens, the next ring as outlines.
+            Progression.Reset();
+            gm.ShopOpen = true;
+            yield return null;
+            yield return Snap("web-fresh");
+            // Grown: a mid-campaign purse spent as the bot spends, every ability, Valor and Glory in hand.
+            Progression.GrantForTest(400000, 12, 5);
+            SpendEverything();
+            Progression.GrantAbilitiesForTest();
+            Progression.GrantForTest(0, 4, 2);
+            yield return null;
+            yield return Snap("web-grown");
+            gm.ShopOpen = false;
+            yield return null;
+
+            int towers = PlaceLayout(gm);
+            // A barricade on the road for Emergency Repairs to patch: the first spot, walking out from the base, that takes one.
+            var grid = gm.Grid;
+            var roads = new List<Vector2Int>();
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+                if (HexGrid.IsPath(grid.Kind(c, r))) roads.Add(new Vector2Int(c, r));
+            roads.Sort((p, q) => (grid.Center(p) - map.Base).sqrMagnitude.CompareTo((grid.Center(q) - map.Base).sqrMagnitude));
+            Barricade wall = null;
+            foreach (var cell in roads)
+            {
+                if ((grid.Center(cell) - map.Base).magnitude < 14f) continue;
+                for (int axis = 0; axis < 3 && wall == null; axis++)
+                    if (BuildController.BarricadeProblem(cell, axis, ignorePlayer: true) == null)
+                        wall = BuildController.PlaceBarricade(cell, axis, ignorePlayer: true);
+                if (wall != null) break;
+            }
+            Log($"abilities: unlocked {string.Join(", ", System.Array.ConvertAll(System.Array.FindAll(Abilities.All, Progression.AbilityUnlocked), a => a.Name))}; loadout {Progression.Loadout[0].Name} / {Progression.Loadout[1].Name}; towers={towers} shields={gm.MaxShields}");
+            gm.StartRound();
+            Time.timeScale = 2f;
+            float t = 0;
+            while (gm.Phase == Phase.Combat && Enemy.All.Count < 30 && t < 40f) { t += Time.unscaledDeltaTime; yield return null; }
+
+            var ab = PlayerAbilities.I;
+            foreach (var a in Abilities.All)
+            {
+                if (gm.Phase != Phase.Combat) { Log($"abilities: round ended before {a.Name}"); break; }
+                // Into the thick of the horde, on the road.
+                Vector3 centre = Vector3.zero;
+                foreach (var e in Enemy.All) centre += e.transform.position;
+                centre /= Mathf.Max(1, Enemy.All.Count);
+                var target = Enemy.All.Count > 0 ? Enemy.All[0].transform.position : map.Base;
+                foreach (var e in Enemy.All)
+                    if ((e.transform.position - centre).sqrMagnitude < (target - centre).sqrMagnitude) target = e.transform.position;
+                var forward = (map.Base - target);
+                forward.y = 0;
+                forward.Normalize();
+                if (a == Abilities.EmergencyRepairs && Barricade.All.Count > 0)
+                {
+                    // One wall worn down, one knocked flat: Rebuild should raise it.
+                    Barricade.All[0].Damage(Barricade.All[0].MaxHealth * 0.6f);
+                    target = Barricade.All[0].transform.position;
+                }
+
+                int killsBefore = gm.Kills, minesBefore = 0, alive = Enemy.All.Count;
+                float wallBefore = 0;
+                foreach (var b in Barricade.All) wallBefore += b.Health;
+                bool fired = ab.Fire(a, target, forward, force: true);
+                Time.timeScale = 1f;
+                yield return new WaitForSeconds(a == Abilities.ArtilleryBarrage ? 2.5f : a == Abilities.SentryDrop ? 1.5f : 1.0f);
+
+                int slowed = 0, lured = 0;
+                foreach (var e in Enemy.All) { if (e.Lured) lured++; if (e.SlowedNow) slowed++; }
+                float wallAfter = 0;
+                foreach (var b in Barricade.All) wallAfter += b.Health;
+                Time.timeScale = 0f;
+                Hud.Hidden = true;
+                var look = target - forward * 11f + Vector3.up * 7f;
+                yield return Photo($"ability-{a.Id}", look, target, 55f);
+                Hud.Hidden = false;
+                Log($"abilities: {a.Name,-18} fired={fired} kills+{gm.Kills - killsBefore} alive {alive}->{Enemy.All.Count} slowed={slowed} lured={lured} " +
+                    $"sentries={Tower.Sentries.Count} rally=x{1f + AbilityFields.Rally.Damage:0.00} walls {wallBefore:0}->{wallAfter:0}");
+                Time.timeScale = 2f;
+                yield return new WaitForSeconds(0.5f);
+            }
             Time.timeScale = 1f;
         }
 

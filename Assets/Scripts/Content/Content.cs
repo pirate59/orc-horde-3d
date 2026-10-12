@@ -246,18 +246,78 @@ namespace OrcHordeFps
     }
 
     /// <summary>The two starting abilities, from orc-horde src/content/abilities.ts.</summary>
+    /// <summary>Orc Horde's manual abilities, from content/abilities.ts. A round carries two of them, one per hand.</summary>
     public static class Abilities
     {
         public static readonly AbilityDef Mortar = new AbilityDef
         {
             Id = "mortar", Name = "Mortar", Description = "Manually targeted shell. Heavy damage in a tight radius.",
-            Cooldown = U.Sec(10000), Damage = 250, Radius = U.M(90),
+            UnlockedByDefault = true, Cooldown = U.Sec(10000), Damage = 250, Radius = U.M(90),
         };
 
         public static readonly AbilityDef BombingRun = new AbilityDef
         {
             Id = "bombing_run", Name = "Bombing Run", Description = "Strafing corridor along your aim.",
-            Cooldown = U.Sec(25000), Damage = 160, Length = U.M(450), Width = U.M(100),
+            UnlockedByDefault = true, Cooldown = U.Sec(25000), Damage = 160, Length = U.M(450), Width = U.M(100),
         };
+
+        public static readonly AbilityDef EmergencyRepairs = new AbilityDef
+        {
+            Id = "emergency_repairs", Name = "Emergency Repairs",
+            Description = "Patch every barricade in the circle, giving back half its health. With Rebuild, fallen barricades come back up too.",
+            Cooldown = U.Sec(20000), Radius = U.M(140), RepairFraction = 0.5f, Color = U.Hex(0x7ad0ff),
+        };
+
+        public static readonly AbilityDef OilSlick = new AbilityDef
+        {
+            Id = "oil_slick", Name = "Oil Slick",
+            Description = "Spill oil across the road. Everything on it is slowed, and now and then an orc slips over and lies still. Bosses keep their feet.",
+            Cooldown = U.Sec(18000), Radius = U.M(110), Duration = U.Sec(8000),
+            SlowFactor = 0.5f, SlipChance = 0.35f, SlipDuration = U.Sec(1200), Color = U.Hex(0x9a7cff),
+        };
+
+        public static readonly AbilityDef RallyingCry = new AbilityDef
+        {
+            Id = "rallying_cry", Name = "Rallying Cry",
+            Description = "Every tower on the field hits harder for a few seconds. Upgrades add fire rate and range to the cry.",
+            Cooldown = U.Sec(30000), Duration = U.Sec(8000), DamageBonus = 0.25f, Color = U.Hex(0xffd84a),
+        };
+
+        public static readonly AbilityDef SentryDrop = new AbilityDef
+        {
+            Id = "sentry_drop", Name = "Sentry Drop",
+            Description = "Drop a Machine Gun sentry onto open ground, even the road itself. It fights with your Machine Gun upgrades, then powers down.",
+            Cooldown = U.Sec(22000), Duration = U.Sec(15000), Color = U.Hex(0x5effc4),
+        };
+
+        public static readonly AbilityDef ProximityMines = new AbilityDef
+        {
+            Id = "proximity_mines", Name = "Proximity Mines",
+            Description = "Lay three mines around a spot on the road. They wait there for the rest of the round and go off when anything comes near.",
+            Cooldown = U.Sec(16000), MineCount = 3, Damage = 180, Radius = U.M(70), TriggerRadius = U.M(24), Color = U.Hex(0xff5a5a),
+        };
+
+        public static readonly AbilityDef ArtilleryBarrage = new AbilityDef
+        {
+            Id = "artillery_barrage", Name = "Artillery Barrage",
+            Description = "Call shells down on a stretch of road. For six seconds they fall at random inside the circle, and anything caught under one is hit.",
+            Cooldown = U.Sec(28000), Radius = U.M(130), Duration = U.Sec(6000), ShellInterval = U.Sec(300),
+            Damage = 70, ShellRadius = U.M(45), Color = U.Hex(0xffa040),
+        };
+
+        public static readonly AbilityDef DecoyBeacon = new AbilityDef
+        {
+            Id = "decoy_beacon", Name = "Decoy Beacon",
+            Description = "Plant a hologram of the base's beacon. Orcs within its reach turn off their route and swarm it until it burns out. Bosses aren't fooled.",
+            Cooldown = U.Sec(26000), Radius = U.M(220), Duration = U.Sec(6000), Damage = 300, OverloadRadius = U.M(110),
+            Color = U.Hex(0x5effc4),
+        };
+
+        /// <summary>In Orc Horde's order, which is also the order a gap in the loadout fills from.</summary>
+        public static readonly AbilityDef[] All =
+            { Mortar, BombingRun, EmergencyRepairs, OilSlick, RallyingCry, SentryDrop, ProximityMines, ArtilleryBarrage, DecoyBeacon };
+
+        public static AbilityDef ById(string id) => System.Array.Find(All, a => a.Id == id);
     }
+
 }
