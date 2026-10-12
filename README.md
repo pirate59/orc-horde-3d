@@ -95,7 +95,7 @@ The cyan build outlines are full in the build phase and fade to a trace in a fig
 - **Snow:** a stone keep behind a crenellated curtain wall, with corner towers, braziers and snow on every ledge.
 - **Canyon:** an adobe citadel of stepped clay blocks with beam ends, a domed tower and a striped awning.
 
-All share a thin mint ring where a breach counts. Banners and awnings move in the wind, and a faint blue dome shows while shield layers are up, flaring when one takes a breach. Below two thirds of the base's health smoke rises; below a third fires catch and roofs, crenels and banners fall. A new round puts it all back.
+Where the road runs on past the base (Track Diggings), so the horde can come at it from either side, it's built in two smaller halves on the road's flanks, both facing in across it, so neither road sees the back of a building. All share a thin mint ring where a breach counts. Banners and awnings move in the wind, and a faint blue dome shows while shield layers are up, flaring when one takes a breach. Below two thirds of the base's health smoke rises; below a third fires catch and roofs, crenels and banners fall. A new round puts it all back.
 
 **Sky and light.** Each map is fought under its own mood (`World/Sky.cs`), set to suit it. The pause menu's Sky setting can force one everywhere.
 - **Day:** high sun, blue sky, drifting cumulus, crisp shadows.
@@ -113,7 +113,7 @@ Each mood sets its own strengths. Shadows use four cascades out to 90 m. None of
 
 **Combat effects** (`Core/Combat.cs`), all pooled:
 - **Light:** every blast and muzzle throws a brief flash. A mortar lights up the road at night.
-- **Marks:** explosions leave scorch marks and dying orcs leave blood, laid on whatever slope is underneath. They fade after a while.
+- **Marks:** explosions leave scorch marks and dying orcs leave blood, laid on whatever slope is underneath. Scorches fade after a while; blood stays for the whole map (the last 400 pools).
 - **Impacts:** sparks bright enough to glow, and dust and chips where shots hit rock and ground.
 - **Tracers:** rifle and Machine Gun tracers glow.
 - **Feel:** blasts near you shake the view, hard close up and nothing past their reach. A killing headshot or a boss going down holds the world still for a beat.

@@ -74,6 +74,15 @@ namespace OrcHordeFps
             // The base faces up the road; the rock behind it is cleared for it to stand in.
             BaseFacing = OpenDirection(grid, map.Base);
             basePoint = map.Base;
+            // A base the road runs on past, so the horde can come at it from either side, is built in
+            // two halves on the road's flanks, both facing in: from either road you see their fronts.
+            BaseFlank = Vector3.Cross(Vector3.up, BaseFacing);
+            TwoSided = RoadRun(grid, map.Base, -BaseFacing) >= 10f;
+            if (TwoSided)
+            {
+                flankOffsets[0] = RoadRun(grid, map.Base, -BaseFlank) + 1f;
+                flankOffsets[1] = RoadRun(grid, map.Base, BaseFlank) + 1f;
+            }
 
             for (int cx = 0; cx < grid.Columns; cx += ChunkSize)
             for (int cy = grid.FirstRow; cy <= grid.LastRow; cy += ChunkSize)
@@ -229,7 +238,25 @@ namespace OrcHordeFps
         {
             var d = p - basePoint;
             d.y = 0;
-            return d.magnitude < 15f && Vector3.Dot(d, -BaseFacing) > -1.5f;
+            if (!TwoSided) return d.magnitude < 15f && Vector3.Dot(d, -BaseFacing) > -1.5f;
+            // Two halves: the rock on both flanks, out to the far side of each half.
+            float across = Vector3.Dot(d, BaseFlank), along = Mathf.Abs(Vector3.Dot(d, BaseFacing));
+            float offset = across < 0 ? flankOffsets[0] : flankOffsets[1];
+            return along < 9.5f && Mathf.Abs(across) > offset - 1.5f && Mathf.Abs(across) < offset + 11f;
+        }
+
+        /// <summary>Whether the road runs on past the base, so it's built in two halves (see InBaseClearing).</summary>
+        public static bool TwoSided { get; private set; }
+        /// <summary>Across the road at the base.</summary>
+        public static Vector3 BaseFlank { get; private set; } = Vector3.right;
+        static readonly float[] flankOffsets = new float[2];
+
+        /// <summary>How far the road runs from a point in a direction before it meets something else.</summary>
+        static float RoadRun(HexGrid grid, Vector3 from, Vector3 dir, float max = 30f)
+        {
+            float run = 0;
+            while (run < max && HexGrid.IsPath(grid.Kind(grid.CellAt(from + dir * (run + 0.5f))))) run += 0.5f;
+            return run;
         }
 
         const float PlinthHeight = 0.65f;
@@ -352,10 +379,24 @@ namespace OrcHordeFps
             var yard = new GameObject(map.endpoint.name).transform;
             yard.SetParent(root, false);
             yard.position = map.Base;
-            var outward = -OpenDirection(grid, map.Base);
-            yard.rotation = Quaternion.LookRotation(outward);
-
-            BaseModels.Build(yard, map.biome);
+            yard.rotation = Quaternion.LookRotation(-BaseFacing);
+            BaseModels.Ring(yard, map.Base);
+            if (!TwoSided)
+            {
+                BaseModels.Build(yard, map.biome);
+                return;
+            }
+            // Two halves, each a smaller copy standing on a flank and facing in across the road.
+            for (int i = 0; i < 2; i++)
+            {
+                var flank = i == 0 ? -BaseFlank : BaseFlank;
+                var half = new GameObject("Half").transform;
+                half.SetParent(yard, false);
+                half.position = map.Base + flank * flankOffsets[i] - flank * 2f;
+                half.rotation = Quaternion.LookRotation(flank);
+                half.localScale = Vector3.one * 0.72f;
+                BaseModels.Build(half, map.biome);
+            }
         }
 
         /// <summary>

@@ -13,8 +13,10 @@ namespace OrcHordeFps
     /// </summary>
     public static class Combat
     {
-        const int Lights = 16, MostScorches = 70, MostBlood = 120;
-        const float ScorchLife = 25f, BloodLife = 18f, MarkFade = 3f;
+        const int Lights = 16, MostScorches = 70, MostBlood = 400;
+        const float ScorchLife = 25f, MarkFade = 3f;
+        /// <summary>Blood stays for the whole map: only the oldest pools give way, past the most kept.</summary>
+        const float BloodLife = float.PositiveInfinity;
 
         static Light[] lights;
         static float[] lightEnds, lightLife, lightPeak;

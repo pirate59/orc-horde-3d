@@ -215,6 +215,8 @@ namespace OrcHordeFps
             var facing = MapBuilder.BaseFacing;
             var flank = Vector3.Cross(Vector3.up, facing);
             foreach (var s in new[] { -1f, 1f }) Torch.Create(root.transform, map.Base + facing * 2.5f + flank * s * 4.5f, strength);
+            if (MapBuilder.TwoSided)
+                foreach (var s in new[] { -1f, 1f }) Torch.Create(root.transform, map.Base - facing * 2.5f + flank * s * 4.5f, strength);
         }
 
         /// <summary>A post with a flame on it, and a warm light that flickers.</summary>

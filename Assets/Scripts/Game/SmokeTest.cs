@@ -1174,6 +1174,8 @@ namespace OrcHordeFps
             yield return new WaitForSeconds(0.5f);
             yield return Photo($"{map.id}-base", eye, look, 55f);
             yield return Photo($"{map.id}-base-near", near, look, 65f);
+            if (MapBuilder.TwoSided)
+                yield return Photo($"{map.id}-base-back", map.Base - facing * 20f - side * 9f + Vector3.up * 8f, map.Base + facing * 5f + Vector3.up * 5f, 55f);
             Sky.Apply(map, Mood.Night);
             yield return new WaitForSeconds(0.5f);
             yield return Photo($"{map.id}-base-night", eye, look, 55f);
@@ -1189,7 +1191,7 @@ namespace OrcHordeFps
             Log($"{map.id,-18} base {map.biome} parts restored, shields={gm.MaxShields}");
             if (gm.MaxShields > 0)
             {
-                BaseRig.I.Hit(true);
+                BaseRig.HitAll(true);
                 yield return new WaitForSeconds(0.1f);
                 yield return Photo($"{map.id}-base-shield", eye, look, 55f);
             }

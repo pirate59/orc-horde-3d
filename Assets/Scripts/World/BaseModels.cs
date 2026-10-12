@@ -27,11 +27,15 @@ namespace OrcHordeFps
                 case "canyon": Citadel(yard, rig); break;
                 default: ForgeHold(yard, rig); break;
             }
-            // Where a breach counts: a thin mint ring on the ground, the one thing every base shares.
-            var ring = Fx.NewLine(yard, U.Hex(0x5effc4) * 1.6f, 0.12f);
-            Fx.SetGroundCircle(ring, yard.position, 3.5f, 48);
             rig.Init();
             return rig;
+        }
+
+        /// <summary>Where a breach counts: a thin mint ring on the ground, the one thing every base shares.</summary>
+        public static void Ring(Transform yard, Vector3 at)
+        {
+            var ring = Fx.NewLine(yard, U.Hex(0x5effc4) * 1.6f, 0.12f);
+            Fx.SetGroundCircle(ring, at, 3.5f, 48);
         }
 
         // --- Pieces ---------------------------------------------------------------------
@@ -437,7 +441,15 @@ namespace OrcHordeFps
     /// </summary>
     public sealed class BaseRig : MonoBehaviour
     {
-        public static BaseRig I { get; private set; }
+        /// <summary>Every rig on the map: one, or two for a base built in halves.</summary>
+        public static readonly List<BaseRig> All = new List<BaseRig>();
+
+        public static void HitAll(bool shielded)
+        {
+            foreach (var r in All) if (r != null) r.Hit(shielded);
+        }
+
+        void OnDestroy() => All.Remove(this);
 
         sealed class Part { public Transform T; public Vector3 Pos, Euler, BrokenPos, BrokenEuler; public float Delay; }
         readonly List<Part> parts = new List<Part>();
@@ -464,7 +476,7 @@ namespace OrcHordeFps
 
         public void Init()
         {
-            I = this;
+            All.Add(this);
             // Fires that catch as the base burns: lit, but out until they're needed.
             foreach (var b in burn)
             {
