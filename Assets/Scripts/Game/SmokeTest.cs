@@ -610,18 +610,22 @@ namespace OrcHordeFps
 
             foreach (var t in towers)
             {
-                // Stand off to one side of the tower, a little above it, looking at it.
-                var toward = (focus - t.transform.position);
+                // From beside and a little above the tower, looking along its line of fire, frozen
+                // just after it fires so its shot is in the frame.
+                var toward = focus - t.transform.position;
                 toward.y = 0;
                 var side = Vector3.Cross(Vector3.up, toward.normalized);
-                var eye = t.transform.position - toward.normalized * 2.4f + side * 2.6f;
-                eye.y = 0;
-                pc.Teleport(eye);
-                var look = t.transform.position + Vector3.up * 1.1f - (eye + Vector3.up * 1.65f);
-                pc.SetView(Quaternion.LookRotation(new Vector3(look.x, 0, look.z)).eulerAngles.y,
-                    -Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg);
-                yield return new WaitForSeconds(Mathf.Max(0.6f, t.Stats.FireInterval * 0.85f));
-                yield return Snap($"armory-{t.Def.Id}");
+                var eye = t.transform.position - toward.normalized * 3f + side * 3.2f + Vector3.up * 2.4f;
+                var look = t.transform.position + toward.normalized * Mathf.Min(6f, toward.magnitude * 0.5f) + Vector3.up * 1f;
+                float before = t.LastFired, waited = 0;
+                while (Mathf.Approximately(t.LastFired, before) && waited < 4f) { waited += Time.unscaledDeltaTime; yield return null; }
+                yield return null;
+                yield return null;
+                Time.timeScale = 0f;
+                Hud.Hidden = true;
+                yield return Photo($"armory-{t.Def.Id}", eye, look, 68f);
+                Hud.Hidden = false;
+                Time.timeScale = 1f;
             }
 
             // The rifle: idle, mid-burst, and with the magazine out.

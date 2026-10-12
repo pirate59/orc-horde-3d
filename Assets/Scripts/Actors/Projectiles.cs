@@ -8,12 +8,15 @@ namespace OrcHordeFps
         Vector3 velocity;
         float damage, radius, life;
         int mask;
+        static int fired;
 
         public static void Fire(Vector3 from, Vector3 dir, TowerDef def, float damage, int sightMask)
         {
-            var go = Shapes.Prim(PrimitiveType.Sphere, null, from, new Vector3(0.09f, 0.09f, 0.6f), Mats.Unlit(def.Color * 2.6f));
-            go.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            go.transform.rotation = Quaternion.LookRotation(dir);
+            // The round itself is too quick to see: what shows is the air it tears through, and every
+            // fourth one a glowing tracer.
+            var go = new GameObject("Bullet");
+            go.transform.SetPositionAndRotation(from, Quaternion.LookRotation(dir));
+            WeaponFx.AirTrail(go, 0.12f, 0.12f, ++fired % 4 == 0 ? new Color(1f, 0.75f, 0.35f) : default);
             var p = go.AddComponent<Projectile>();
             p.velocity = dir * def.ProjectileSpeed;
             p.damage = damage;
@@ -37,7 +40,7 @@ namespace OrcHordeFps
                 else if (e != null)
                 {
                     e.TakeDamage(damage, from: transform.position);
-                    Fx.Burst(hit.point, 0.18f, U.Hex(0x6a0c0c), 0.1f);
+                    WeaponFx.Smoke(hit.point, hit.normal * 1.5f + Random.insideUnitSphere, 0.25f, 0.35f, new Color(0.4f, 0.03f, 0.03f, 0.8f));
                     if (Random.value < 0.15f) Combat.Blood(hit.point, 0.5f);
                 }
                 else
@@ -62,6 +65,11 @@ namespace OrcHordeFps
         public static void Lob(Vector3 from, Vector3 to, float speed, float splash, float damage, Color color)
         {
             var go = Shapes.Prim(PrimitiveType.Sphere, null, from, Vector3.one * 0.3f, Mats.Lit(U.Hex(0x22262b)));
+            // A trail of smoke and shimmer behind it, so its arc can be followed.
+            WeaponFx.SmokeTrail(go, 0.3f, 0.7f);
+            var shimmer = new GameObject("shimmer");
+            shimmer.transform.SetParent(go.transform, false);
+            WeaponFx.AirTrail(shimmer, 0.35f, 0.25f);
             var s = go.AddComponent<Shell>();
             s.from = from;
             s.to = to;
@@ -85,12 +93,9 @@ namespace OrcHordeFps
             Combat.Scorch(to, splash * 0.55f);
             Combat.Debris(to, 6f, U.Hex(0x6b5a48), 6);
             Combat.Shake(to, 0.3f, 16f);
-            // A short, hot fireball, a ring along the ground showing the splash's reach, and smoke.
-            Fx.Burst(to + Vector3.up * 0.4f, splash * 0.45f, U.Hex(0xffc060), 0.22f);
+            // A fireball rolling up into smoke, sparks flung out, and a ring along the ground showing the splash's reach.
+            WeaponFx.Fireball(to + Vector3.up * 0.4f, splash * 0.45f);
             Fx.Ring(to + Vector3.up * 0.1f, splash, U.Hex(0xff8a30), 0.35f);
-            for (int i = 0; i < 4; i++)
-                Fx.Puff(to + Random.insideUnitSphere * splash * 0.3f + Vector3.up * 0.3f, Vector3.up * Random.Range(1f, 2f) + Random.insideUnitSphere * 0.5f,
-                    Random.Range(0.5f, 0.9f), new Color(0.3f, 0.28f, 0.26f, 0.6f), Random.Range(0.6f, 1f));
             Destroy(gameObject);
         }
     }

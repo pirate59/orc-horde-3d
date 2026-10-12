@@ -178,7 +178,7 @@ namespace OrcHordeFps
                     HitMarkerUntil = Time.time + 0.12f;
                     LastHitWasHead = head;
                     Sfx.UI(head ? "headshot" : "hit");
-                    Fx.Burst(hit.point, 0.25f, U.Hex(0x7a1010), 0.15f);
+                    WeaponFx.Smoke(hit.point, -ray.direction * 1.5f + Random.insideUnitSphere, 0.3f, 0.35f, new Color(0.4f, 0.03f, 0.03f, 0.85f));
                 }
                 else
                 {
@@ -190,8 +190,14 @@ namespace OrcHordeFps
 
             Sfx.UI("rifle_shot");
             // A tracer hot enough to glow.
-            Fx.Line(muzzle.position, end, U.Hex(0xfff0b0) * 2.2f, 0.025f, 0.05f);
-            Fx.Burst(muzzle.position, 0.09f, U.Hex(0xffe08a), 0.04f);
+            // A glowing tracer down the shot's line, the air it tore through shimmering after it, a star
+            // of flame at the muzzle and a curl of smoke.
+            WeaponFx.Beam(new[] { muzzle.position, end }, new Color(1f, 0.85f, 0.55f), 0.025f, 0.06f);
+            float along = Vector3.Distance(muzzle.position, end);
+            for (float d = 1.5f; d < Mathf.Min(along, 30f); d += 2.5f)
+                WeaponFx.Air(Vector3.Lerp(muzzle.position, end, d / along), Vector3.zero, 0.35f, 0.18f, 0.7f);
+            WeaponFx.Flame(muzzle.position + muzzle.forward * 0.05f, muzzle.forward * 2f, 0.12f, 0.04f, new Color(1f, 0.9f, 0.6f));
+            WeaponFx.Smoke(muzzle.position, muzzle.forward * 0.6f + Vector3.up * 0.4f, 0.08f, 0.7f, new Color(0.7f, 0.68f, 0.65f, 0.25f));
             flash.intensity = 4f;
             recoil = 1f;
             recoilYaw = Random.Range(-1.2f, 1.2f);

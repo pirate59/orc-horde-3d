@@ -160,8 +160,7 @@ namespace OrcHordeFps
             Combat.Debris(point, 8f, U.Hex(0x6b5a48), 10);
             Combat.Shake(point, 0.6f, 26f);
             Sfx.At("explosion", point, 1.2f, 0.85f);
-            Fx.Burst(point + Vector3.up * 0.5f, Progression.AbilityRadius(Abilities.Mortar), U.Hex(0xffa040), 0.5f);
-            Fx.Burst(point + Vector3.up * 1.5f, Progression.AbilityRadius(Abilities.Mortar) * 0.6f, U.Hex(0xfff0a0), 0.25f);
+            WeaponFx.Fireball(point + Vector3.up * 0.5f, Progression.AbilityRadius(Abilities.Mortar) * 0.5f);
         }
 
         IEnumerator BombingRun(Vector3 start, Vector3 forward)
@@ -180,7 +179,7 @@ namespace OrcHordeFps
                 }
                 Combat.Scorch(p, Abilities.BombingRun.Width * 0.35f);
                 Combat.Shake(p, 0.18f, 22f);
-                Fx.Burst(p + Vector3.up * 0.5f, Abilities.BombingRun.Width / 2, U.Hex(0xffa040), 0.4f);
+                WeaponFx.Fireball(p + Vector3.up * 0.5f, Abilities.BombingRun.Width * 0.3f);
                 yield return new WaitForSeconds(StrafeSeconds / StrafeBursts);
             }
         }

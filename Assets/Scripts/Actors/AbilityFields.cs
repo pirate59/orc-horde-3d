@@ -328,8 +328,7 @@ namespace OrcHordeFps
             foreach (var m in queue)
             {
                 Damage.Splash(m.At, m.Radius, m.Damage, armourPierce: m.Pierce);
-                Fx.Burst(m.At + Vector3.up * 0.4f, m.Radius, U.Hex(0xffa040), 0.4f);
-                Fx.Burst(m.At + Vector3.up * 0.8f, m.Radius * 0.5f, U.Hex(0xfff0a0), 0.2f);
+                WeaponFx.Fireball(m.At + Vector3.up * 0.4f, m.Radius * 0.45f);
                 Sfx.At("explosion", m.At, 0.9f, 1.15f);
                 Combat.Flash(m.At + Vector3.up * 0.8f, U.Hex(0xff8a40), m.Radius * 4f, 4.5f, 0.3f);
                 Combat.Scorch(m.At, m.Radius * 0.5f);
@@ -354,7 +353,7 @@ namespace OrcHordeFps
                     var impact = Relief.OnGround(b.At + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distance);
                     Damage.Splash(impact, b.ShellRadius, b.Damage);
                     Fx.Line(impact + Vector3.up * 18f, impact, new Color(1f, 0.85f, 0.6f, 0.7f), 0.08f, 0.12f);
-                    Fx.Burst(impact + Vector3.up * 0.4f, b.ShellRadius, U.Hex(0xffa040), 0.3f);
+                    WeaponFx.Fireball(impact + Vector3.up * 0.4f, b.ShellRadius * 0.4f);
                     Sfx.At("explosion", impact, 0.7f, 1.1f);
                     Combat.Flash(impact + Vector3.up * 0.8f, U.Hex(0xffa040), b.ShellRadius * 5f, 4f, 0.25f);
                     Combat.Scorch(impact, b.ShellRadius * 0.5f);

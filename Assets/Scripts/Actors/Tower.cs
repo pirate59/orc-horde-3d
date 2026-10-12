@@ -261,7 +261,11 @@ namespace OrcHordeFps
             Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, Damage, SightMask);
             Sfx.At("mg_shot", muzzle.position);
             if (Random.value < 0.35f) Combat.Flash(muzzle.position, U.Hex(0xffd27a), 4f, 1.6f, 0.06f);
-            Fx.Burst(muzzle.position, 0.28f, U.Hex(0xffd27a), 0.05f);
+            // A star of flame at the muzzle, a wisp of smoke, and a shove of air.
+            var f = muzzle.forward;
+            WeaponFx.Flame(muzzle.position + f * 0.15f, f * 4f, Random.Range(0.25f, 0.4f), 0.06f, new Color(1f, 0.9f, 0.6f));
+            if (Random.value < 0.4f) WeaponFx.Smoke(muzzle.position + f * 0.3f, f * 1.5f + Vector3.up * 0.6f, 0.25f, 0.9f, new Color(0.6f, 0.58f, 0.55f, 0.35f));
+            WeaponFx.Air(muzzle.position + f * 0.4f, f * 3f, 0.5f, 0.12f, 0.8f);
             // Spent brass, out of the right side and onto the ground.
             if (rig.Ejector != null && Random.value < 0.6f)
                 Fx.Casing(rig.Ejector.position, rig.Yaw.right * Random.Range(1.2f, 2f) + Vector3.up * Random.Range(1.5f, 2.5f) - rig.Yaw.forward * 0.5f,
@@ -275,12 +279,15 @@ namespace OrcHordeFps
             Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Stats.Splash, Damage, Def.Color);
             Sfx.At("cannon_fire", muzzle.position);
             Combat.Flash(muzzle.position, U.Hex(0xffb050), 7f, 3f, 0.12f);
-            Fx.Burst(muzzle.position, 0.6f, U.Hex(0xffd27a), 0.1f);
             kick = 0.24f;
-            // A gout of smoke from the muzzle, drifting up.
-            for (int i = 0; i < 5; i++)
-                Fx.Puff(muzzle.position, muzzle.forward * Random.Range(1f, 2.5f) + Random.insideUnitSphere * 0.6f + Vector3.up * 0.6f,
-                    Random.Range(0.4f, 0.8f), new Color(0.55f, 0.53f, 0.5f, 0.7f), Random.Range(0.6f, 1.1f));
+            // The blast: a tongue of fire, a ring of shoved air, and a gout of smoke rolling forward and up.
+            var f = muzzle.forward;
+            for (int i = 0; i < 6; i++)
+                WeaponFx.Flame(muzzle.position + f * 0.3f, f * Random.Range(4f, 8f) + Random.insideUnitSphere * 1.5f, Random.Range(0.4f, 0.7f), Random.Range(0.08f, 0.15f));
+            WeaponFx.Air(muzzle.position + f * 0.6f, f * 2f, 2.2f, 0.25f, 1f);
+            for (int i = 0; i < 9; i++)
+                WeaponFx.Smoke(muzzle.position + f * Random.Range(0.3f, 1.2f), f * Random.Range(1f, 3.5f) + Random.insideUnitSphere * 0.8f + Vector3.up * 0.7f,
+                    Random.Range(0.5f, 0.9f), Random.Range(1.2f, 2.2f), new Color(0.58f, 0.56f, 0.53f, 0.6f));
         }
 
         /// <summary>
@@ -321,8 +328,16 @@ namespace OrcHordeFps
                 dir = Vector3.Reflect(dir, hit.normal).normalized;
                 p = end + dir * 0.02f;
             }
-            Fx.Polyline(points.ToArray(), Def.Color, 0.07f, 0.09f);
-            Fx.Polyline(points.ToArray(), Color.white, 0.025f, 0.06f);
+            // A glowing beam, motes crackling off along it, a flare at the muzzle and sparks where it strikes.
+            WeaponFx.Beam(points.ToArray(), Def.Color, 0.09f, 0.16f);
+            for (int k = 1; k < points.Count; k++)
+            {
+                float length = Vector3.Distance(points[k - 1], points[k]);
+                for (int m = 0; m < Mathf.Min(12, Mathf.CeilToInt(length / 1.5f)); m++)
+                    WeaponFx.Spark(Vector3.Lerp(points[k - 1], points[k], Random.value), Random.insideUnitSphere * 1.2f, 0.05f, Random.Range(0.15f, 0.35f), Def.Color);
+            }
+            WeaponFx.Flame(muzzle.position, Vector3.zero, 0.9f, 0.12f, Def.Color);
+            WeaponFx.Sparks(points[points.Count - 1], -dir, Color.Lerp(Def.Color, Color.white, 0.4f), 8, 5f);
             Sfx.At("laser_zap", muzzle.position);
             Combat.Flash(points[points.Count - 1], Def.Color, 5f, 2f, 0.1f);
             Combat.Sparks(points[points.Count - 1], -dir, Def.Color, 3);
@@ -353,9 +368,18 @@ namespace OrcHordeFps
                 e.Slow(Def.SlowFactor, Stats.SlowDuration);
                 e.TakeDamage(Damage, from: transform.position);
                 // A bolt from the crystal to every orc caught in the pulse.
-                if (e.Targetable) Fx.Lightning(muzzle.position, e.AimPoint, Def.Color);
+                if (e.Targetable)
+                {
+                    WeaponFx.Bolt(muzzle.position, e.AimPoint, Def.Color);
+                    // Crackle crawling over the orc it struck.
+                    for (int k = 0; k < 4; k++)
+                        WeaponFx.Spark(e.AimPoint + Random.insideUnitSphere * e.Def.Radius * 2f, Random.insideUnitSphere * 2.5f, 0.04f, Random.Range(0.1f, 0.25f), Color.Lerp(Def.Color, Color.white, 0.5f));
+                }
             }
             Fx.Ring(transform.position + Vector3.up * 0.4f, Range, Def.Color, 0.45f);
+            // The crystal flares.
+            WeaponFx.Flame(muzzle.position, Vector3.zero, 1.6f, 0.2f, Def.Color);
+            WeaponFx.Air(muzzle.position, Vector3.zero, Range * 0.6f, 0.3f, 0.6f);
             Sfx.At("arc_zap", muzzle.position);
             Combat.Flash(muzzle.position, Def.Color, Range * 0.8f, 2.5f, 0.15f);
             flash = 1f;
@@ -375,15 +399,28 @@ namespace OrcHordeFps
             }
             Sfx.At("flame_burst", muzzle.position);
             if (Random.value < 0.5f) Combat.Flash(muzzle.position + head.forward * 2f, U.Hex(0xff7a20), Range * 0.9f, 2.2f, 0.15f);
-            // The jet: many small, see-through tongues, hotter (yellower) nearer the nozzle.
-            for (int i = 0; i < 6; i++)
+            // The jet: a dense, thick stream of flame filling the cone, swelling as it goes, with black
+            // smoke boiling off its far end, embers flung out, and heat haze rising over it.
+            for (int i = 0; i < 22; i++)
             {
-                var spread = Quaternion.Euler(Random.Range(-4f, 4f), Random.Range(-half, half) * 0.8f, 0);
-                var v = spread * muzzle.forward * Range * Random.Range(1.8f, 2.6f);
-                var c = Color.Lerp(U.Hex(0xffe060), U.Hex(0xff3a10), Random.value);
-                c.a = 0.55f;
-                Fx.Puff(muzzle.position + v * 0.02f, v, Random.Range(0.15f, 0.35f), c, Random.Range(0.3f, 0.45f));
+                var spread = Quaternion.Euler(Random.Range(-5f, 5f), Random.Range(-half, half) * 0.85f, 0);
+                float speed = Range * Random.Range(2f, 2.8f);
+                var v = spread * muzzle.forward * speed + Vector3.up * Random.Range(0f, 1.2f);
+                // Dim each tongue: twenty-odd overlapping glows add up to a white-hot core on their own.
+                WeaponFx.Flame(muzzle.position + v * Random.Range(0f, 0.03f), v, Random.Range(0.35f, 0.65f), Range / speed * Random.Range(0.85f, 1.1f),
+                    new Color(0.55f, 0.32f, 0.12f, 0.5f));
             }
+            for (int i = 0; i < 3; i++)
+            {
+                var spread = Quaternion.Euler(0, Random.Range(-half, half) * 0.8f, 0);
+                var end = muzzle.position + spread * muzzle.forward * Range * Random.Range(0.7f, 1f);
+                WeaponFx.Smoke(end + Vector3.up * 0.6f, Vector3.up * Random.Range(1.2f, 2.2f) + spread * muzzle.forward * 1.5f, Random.Range(0.7f, 1.1f),
+                    Random.Range(1.2f, 2f), new Color(0.12f, 0.1f, 0.09f, 0.55f));
+            }
+            for (int i = 0; i < 4; i++)
+                WeaponFx.Spark(muzzle.position + muzzle.forward * Random.Range(0.5f, Range * 0.7f), Random.insideUnitSphere * 3f + Vector3.up * 2f, 0.04f,
+                    Random.Range(0.4f, 0.8f), new Color(1f, 0.6f, 0.2f));
+            WeaponFx.Air(muzzle.position + muzzle.forward * Range * 0.5f + Vector3.up * 1.2f, Vector3.up * 1.5f, Range * 0.5f, 0.4f, 0.7f);
         }
 
         /// <summary>Where to aim so a shot of this speed meets the target: one refinement is plenty at these ranges.</summary>
