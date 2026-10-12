@@ -182,7 +182,10 @@ namespace OrcHordeFps
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape) && !ShopOpen)
+            // In a browser Esc belongs to the page (it frees the mouse), so it's read from there.
+            bool escape = BrowserBridge.InBrowser ? BrowserBridge.TakeEscape(PlayerController.WantsLock) : Input.GetKeyDown(KeyCode.Escape);
+            if (escape && ShopOpen) { ShopOpen = false; escape = false; }
+            if (escape && !ShopOpen)
             {
                 if (MapMenuOpen) MapMenuOpen = false;
                 else SetPaused(!Paused);

@@ -21,7 +21,7 @@ namespace OrcHordeFps
     /// </summary>
     public static class Session
     {
-        static readonly string UnlockedKey = SaveSlot.Key("unlocked"), LastMapKey = SaveSlot.Key("last-map");
+        const string UnlockedKey = "unlocked", LastMapKey = "last-map";
 
         static string mapId;
 
@@ -37,7 +37,7 @@ namespace OrcHordeFps
                 var args = System.Environment.GetCommandLineArgs();
                 for (int i = 0; i < args.Length - 1; i++)
                     if (args[i] == "-map" && Catalog.Get(args[i + 1]) != null) return mapId = args[i + 1];
-                var last = PlayerPrefs.GetString(LastMapKey, "");
+                var last = SaveStore.GetString(LastMapKey, "");
                 return mapId = IsAvailable(last) ? last : Catalog.campaign[0];
             }
         }
@@ -45,8 +45,12 @@ namespace OrcHordeFps
         /// <summary>How many campaign maps are open, counting from the first.</summary>
         public static int Unlocked
         {
-            get => Mathf.Clamp(PlayerPrefs.GetInt(UnlockedKey, 1), 1, Catalog.campaign.Length);
-            set => PlayerPrefs.SetInt(UnlockedKey, Mathf.Max(Unlocked, value));
+            get => Mathf.Clamp(SaveStore.GetInt(UnlockedKey, 1), 1, Catalog.campaign.Length);
+            set
+            {
+                SaveStore.Set(UnlockedKey, Mathf.Max(Unlocked, value));
+                SaveStore.Commit();
+            }
         }
 
         /// <summary>Campaign maps open in order; maps outside the campaign (the test grounds) always are.</summary>
@@ -64,7 +68,14 @@ namespace OrcHordeFps
             return index >= 0 && index + 1 < Catalog.campaign.Length ? Catalog.campaign[index + 1] : null;
         }
 
-        public static void ResetUnlocks() => PlayerPrefs.SetInt(UnlockedKey, 1);
+        public static void ResetUnlocks()
+        {
+            SaveStore.Set(UnlockedKey, 1);
+            SaveStore.Commit();
+        }
+
+        /// <summary>Forgets which map was open: after the save is replaced, the next scene asks it again.</summary>
+        public static void Forget() => mapId = null;
 
         public static void MarkHeld(string id)
         {
@@ -75,7 +86,8 @@ namespace OrcHordeFps
         public static void Play(string id)
         {
             mapId = id;
-            PlayerPrefs.SetString(LastMapKey, id);
+            SaveStore.Set(LastMapKey, id);
+            SaveStore.Commit();
             Time.timeScale = 1f;
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }

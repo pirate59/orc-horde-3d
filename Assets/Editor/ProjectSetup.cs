@@ -65,6 +65,33 @@ public static class ProjectSetup
         if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded) EditorApplication.Exit(1);
     }
 
+    /// <summary>
+    /// Builds the browser version to Builds/Web, for the Cloudflare Worker in web/worker to serve.
+    /// Gzipped with a decompression fallback: the loader unpacks it itself, so it works from any
+    /// static host without special Content-Encoding headers (Workers static assets doesn't set them).
+    /// </summary>
+    public static void BuildWeb()
+    {
+        Run();
+        PlayerSettings.runInBackground = true;
+        PlayerSettings.WebGL.template = "PROJECT:OrcHorde";
+        PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
+        PlayerSettings.WebGL.decompressionFallback = true;
+        PlayerSettings.WebGL.dataCaching = true;
+        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+        PlayerSettings.WebGL.nameFilesAsHashes = false;
+        PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        {
+            scenes = new[] { ScenePath },
+            locationPathName = "Builds/Web",
+            target = BuildTarget.WebGL,
+            options = BuildOptions.None,
+        });
+        Debug.Log("[ProjectSetup] Web build " + report.summary.result + " in " + report.summary.totalTime + ", " + report.summary.totalSize / (1024 * 1024) + " MB");
+        if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded) EditorApplication.Exit(1);
+    }
+
     /// <summary>Materials are made in code, so the shaders they use must ship in every build.</summary>
     static void IncludeRuntimeShaders()
     {

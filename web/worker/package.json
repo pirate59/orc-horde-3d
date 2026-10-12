@@ -1,0 +1,15 @@
+{
+  "name": "orc-horde-fps-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:local": "wrangler d1 migrations apply orc-horde-saves --local",
+    "db:remote": "wrangler d1 migrations apply orc-horde-saves --remote",
+    "deploy": "wrangler deploy",
+    "test": "node test/saves.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -173,6 +173,57 @@ Every sound is synthesised by Orc Horde → Bake Sounds (`Assets/Editor/SoundBak
 | `Assets/Resources/Audio` | Baked sounds (generated) |
 | `Assets/Shaders` | Terrain and orc shaders |
 
+## Browser build and Cloudflare
+
+The game builds for the browser (WebGL 2) and is served by a Cloudflare Worker (`web/worker`), which also keeps players' cloud saves in D1.
+
+```bash
+Unity -batchmode -quit -projectPath . -executeMethod ProjectSetup.BuildWeb
+```
+
+This writes `Builds/Web`, about 14 MB. It's gzipped with Unity's decompression fallback, so the loader unpacks it itself and any static host works, including Workers static assets, which don't set Content-Encoding for precompressed files. The page (`Assets/WebGLTemplates/OrcHorde`) fills the window and caps the resolution at 1.5× on high-density screens. In a browser:
+- The mouse can only be captured on a click, so the game shows "Click to play" until it is.
+- Esc belongs to the page: it frees the mouse, and the game pauses on it (`Core/BrowserBridge.cs`, `Plugins/WebGL/Browser.jslib`).
+- There's no Quit button, since a tab can't close itself.
+
+**Saving.** The campaign (progression, unlocks, last map, every map's layout) is one document (`Game/SaveStore.cs`) with a revision that goes up on every change. It's kept in PlayerPrefs, which a browser build stores in IndexedDB, so it survives reloads but belongs to one browser and is lost if the site's data is cleared. Older saves migrate on first run. Device settings (volume, sky) stay separate and aren't synced.
+
+**Cloud saves** (`Game/CloudSave.cs`, `web/worker`). There are no accounts. Each player's first device makes up an anonymous id and a secret; the Worker keeps the save under the id, and only that secret can read or change it (it stores a SHA-256 of the secret, never the secret). The save syncs automatically:
+- On start, a newer cloud copy (higher revision) replaces the local one and the map reloads; an older one is overwritten.
+- Each change is sent about 2 s later, and retried if offline.
+- The server refuses any write that isn't newer than what it holds, checked in the same statement that writes it. If two devices clash mid-session, the one being played wins.
+
+The pause menu shows the sync status. **Copy save code** gives the id and secret together; **Use a save code** on another device takes that campaign over there. D1 rather than KV because D1 is consistent: a save made on one device is there at once on another, where KV can lag up to a minute.
+
+API (`web/worker/src/index.ts`, tests in `web/worker/test`):
+
+| | |
+|---|---|
+| `GET /api/save/:id` | 200 save, 404 none, 403 wrong secret |
+| `PUT /api/save/:id` | 200 stored, 409 server's copy is as new or newer (returned), 403, 400 malformed, 413 over 512 KB |
+
+Everything else is the static build.
+
+**Run it locally** (no Cloudflare account needed):
+
+```bash
+cd web/worker && npm install && npm run db:local && npm run dev
+```
+
+Then open http://localhost:8787. With the Worker running, `npm test` runs the API checks. A desktop build can sync with `-cloud http://localhost:8787`.
+
+**Deploy.** First time:
+
+```bash
+cd web/worker && npx wrangler login
+```
+
+```bash
+cd web/worker && npx wrangler d1 create orc-horde-saves
+```
+
+Put the `database_id` it prints into `web/worker/wrangler.jsonc`. After that, `web/deploy.sh` builds, applies the database migrations and deploys.
+
 ## Smoke tests
 
 Build a macOS player first:

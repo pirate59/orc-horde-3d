@@ -35,7 +35,7 @@ namespace OrcHordeFps
         static string mapId;
         static bool restoring;
 
-        static string Key(string id) => SaveSlot.Key("layout." + id);
+        static string Key(string id) => "layout." + id;
 
         /// <summary>Starts saving changes for this map, and puts back what was saved for it.</summary>
         public static int Restore(string id)
@@ -44,7 +44,7 @@ namespace OrcHordeFps
             BuildController.LayoutChanged -= Save;
             BuildController.LayoutChanged += Save;
 
-            var json = PlayerPrefs.GetString(Key(id), "");
+            var json = SaveStore.GetString(Key(id), "");
             if (string.IsNullOrEmpty(json)) return 0;
             var saved = JsonUtility.FromJson<Saved>(json);
             int placed = 0;
@@ -71,8 +71,8 @@ namespace OrcHordeFps
             foreach (var t in Tower.All) saved.towers.Add(new SavedTower { id = t.Def.Id, column = t.Cell.x, row = t.Cell.y });
             foreach (var b in Barricade.All)
                 saved.walls.Add(new SavedWall { column = b.Anchor.x, row = b.Anchor.y, axis = b.Axis });
-            PlayerPrefs.SetString(Key(mapId), JsonUtility.ToJson(saved));
-            PlayerPrefs.Save();
+            SaveStore.Set(Key(mapId), JsonUtility.ToJson(saved));
+            SaveStore.Commit();
         }
     }
 }

@@ -140,11 +140,21 @@ namespace OrcHordeFps
             verticalSpeed = 0;
         }
 
+        /// <summary>In a browser, waiting for a click before the mouse can be captured.</summary>
+        public static bool AwaitingClick { get; private set; }
+
+        /// <summary>Whether the game wanted the mouse captured, as of the last frame.</summary>
+        public static bool WantsLock { get; private set; }
+
         void Update()
         {
             if (Tactical && GameManager.I.Phase != Phase.Build) SetTactical(false);
             if (InputLive && Input.GetKeyDown(KeyCode.M)) SetTactical(!Tactical);
             bool locked = InputLive && !Tactical;
+            // In a browser the lock is only granted on a click: until then the game waits for one.
+            // (Esc, which frees it, is handled with the other keys in GameManager.)
+            if (BrowserBridge.InBrowser) AwaitingClick = locked && !BrowserBridge.PointerLocked;
+            WantsLock = locked;
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !locked;
             if (!InputLive) return;

@@ -60,11 +60,11 @@ namespace OrcHordeFps
     /// campaign's currency. Only nodes whose every effect this game honours are
     /// offered; the rest (shields, traits, the later abilities) wait their turn.
     ///
-    /// Saved in PlayerPrefs, so it survives across sessions and map changes.
+    /// Saved in the campaign save (SaveStore), so it survives across sessions, map changes and devices.
     /// </summary>
     public static class Progression
     {
-        static readonly string SaveKey = SaveSlot.Key("progression");
+        const string SaveKey = "progression";
 
         /// <summary>Orc Horde's completion bonus: +5% per campaign round before this one.</summary>
         const float RoundMultiplierStep = 0.05f;
@@ -155,7 +155,7 @@ namespace OrcHordeFps
             get
             {
                 if (save != null) return save;
-                var json = PlayerPrefs.GetString(SaveKey, "");
+                var json = SaveStore.GetString(SaveKey, "");
                 save = string.IsNullOrEmpty(json) ? new Save() : JsonUtility.FromJson<Save>(json);
                 return save;
             }
@@ -163,8 +163,16 @@ namespace OrcHordeFps
 
         static void Persist()
         {
-            PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(Data));
-            PlayerPrefs.Save();
+            SaveStore.Set(SaveKey, JsonUtility.ToJson(Data));
+            SaveStore.Commit();
+            towerCache.Clear();
+            Changed?.Invoke();
+        }
+
+        /// <summary>Drops what was read from the save, after it has been replaced from elsewhere.</summary>
+        public static void Reload()
+        {
+            save = null;
             towerCache.Clear();
             Changed?.Invoke();
         }

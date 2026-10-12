@@ -59,6 +59,7 @@ namespace OrcHordeFps
             if (gm.Phase == Phase.Build && !gm.ShopOpen) DrawInspection();
             if (!gm.ShopOpen && !tactical) DrawCrosshair();
             if (!gm.ShopOpen) DrawBanner(gm);
+            if (PlayerController.AwaitingClick && !gm.Paused && !gm.ShopOpen) DrawClickToPlay();
             if (gm.HelpOpen && !gm.Paused && !gm.ShopOpen && !tactical) DrawHelp();
             if (gm.ShopOpen && !gm.Paused) DrawShop(gm);
             if (gm.Paused) DrawPause(gm);
@@ -267,13 +268,24 @@ namespace OrcHordeFps
                 "H hide help · Esc pause / choose map", small);
         }
 
+        /// <summary>In a browser the mouse can only be captured on a click: ask for one.</summary>
+        void DrawClickToPlay()
+        {
+            var r = new Rect(Screen.width / 2f - S(200), Screen.height / 2f - S(50), S(400), S(100));
+            Box(r, Panel);
+            GUI.Label(new Rect(r.x, r.y + S(14), r.width, S(36)), "<b>Click to play</b>", banner);
+            GUI.Label(new Rect(r.x, r.y + S(56), r.width, S(30)), "<color=#bbb>Esc frees the mouse and pauses</color>", center);
+        }
+
         void DrawPause(GameManager gm)
         {
             Box(new Rect(0, 0, Screen.width, Screen.height), new Color(0, 0, 0, 0.55f));
             var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
             if (gm.MapMenuOpen) { DrawMapMenu(gm, btn); return; }
 
-            var r = new Rect(Screen.width / 2f - S(170), Screen.height / 2f - S(245), S(340), S(490));
+            bool cloud = CloudSave.Available, web = Application.platform == RuntimePlatform.WebGLPlayer;
+            float tall = S(490) + (cloud ? S(140) : 0) - (web ? S(50) : 0);
+            var r = new Rect(Screen.width / 2f - S(170), Screen.height / 2f - tall / 2, S(340), tall);
             Box(r, Panel);
             GUI.Label(new Rect(r.x, r.y + S(10), r.width, S(40)), "Paused", banner);
             float y = r.y + S(60);
@@ -292,16 +304,26 @@ namespace OrcHordeFps
             GUI.Label(new Rect(r.x + S(40), y, S(90), S(30)), "Sky", label);
             var choices = new Mood?[] { null, Mood.Day, Mood.Dusk, Mood.Night, Mood.Overcast };
             int at = System.Array.IndexOf(choices, Sky.Override);
-            string name = Sky.Override.HasValue ? Sky.Override.Value.ToString() : $"Map's own ({Sky.Current})";
+            string name = Sky.Override.HasValue ? Sky.Override.Value.ToString() : $"Auto: {Sky.Current}";
             if (GUI.Button(new Rect(r.x + S(130), y, S(40), S(32)), "<", btn)) { Sky.Override = choices[(at + choices.Length - 1) % choices.Length]; Sky.Apply(gm.Map); }
-            GUI.Label(new Rect(r.x + S(176), y + S(2), r.width - S(260), S(30)), name, center);
+            GUI.Label(new Rect(r.x + S(172), y + S(4), r.width - S(252), S(28)), name, new GUIStyle(small) { alignment = TextAnchor.MiddleCenter, wordWrap = false });
             if (GUI.Button(new Rect(r.xMax - S(80), y, S(40), S(32)), ">", btn)) { Sky.Override = choices[(at + 1) % choices.Length]; Sky.Apply(gm.Map); }
             y += S(50);
             if (Button("Choose map")) gm.MapMenuOpen = true;
             if (Button("Restart map")) gm.RestartMap();
             if (gm.Phase == Phase.Build && Button("Clear layout")) { BuildController.ClearLayout(); gm.SetPaused(false); }
             if (Button("Reset campaign")) gm.ResetCampaign();
-            if (Button("Quit"))
+            if (cloud)
+            {
+                // The cloud copy, and the code that carries the campaign to another device.
+                var colour = CloudSave.Status == CloudSave.State.Synced ? "#5effc4" : CloudSave.Status == CloudSave.State.Refused ? "#ff8a8a" : "#ffb347";
+                GUI.Label(new Rect(r.x + S(24), y - S(4), r.width - S(48), S(44)), $"<color={colour}>{CloudSave.Note}</color>", small);
+                y += S(40);
+                if (Button("Copy save code")) CloudSave.CopyCode();
+                if (Button(web ? "Use a save code..." : "Use save code from clipboard")) CloudSave.EnterCode();
+            }
+            // A browser tab can't be quit from inside the page.
+            if (!web && Button("Quit"))
             {
 #if UNITY_EDITOR
                 UnityEditor.EditorApplication.isPlaying = false;
@@ -441,7 +463,8 @@ namespace OrcHordeFps
             GUI.EndScrollView();
 
             if (GUI.Button(new Rect(r.x + S(16), r.yMax - S(54), S(200), S(40)), "Back", btn)) gm.MapMenuOpen = false;
-            if (GUI.Button(new Rect(r.xMax - S(256), r.yMax - S(54), S(240), S(40)), "Unlock all (dev)", btn))
+            // A shortcut for testing: only in development builds, never in one players get.
+            if (Debug.isDebugBuild && GUI.Button(new Rect(r.xMax - S(256), r.yMax - S(54), S(240), S(40)), "Unlock all (dev)", btn))
                 Session.Unlocked = catalog.campaign.Length;
         }
     }
