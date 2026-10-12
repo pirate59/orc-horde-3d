@@ -12,6 +12,7 @@ if [ "$1" != "--no-build" ]; then
   UNITY=${UNITY:-$(ls -d /Applications/Unity/Hub/Editor/*/Unity.app/Contents/MacOS/Unity | head -1)}
   "$UNITY" -batchmode -quit -projectPath "$ROOT" -executeMethod ProjectSetup.BuildWeb -logFile "$ROOT/Logs/buildweb.log"
   grep "Web build" "$ROOT/Logs/buildweb.log"
+  echo "Built into web/worker/public: commit it so Cloudflare's own builds deploy the same files."
 fi
 cd "$ROOT/web/worker"
 npx wrangler d1 migrations apply orc-horde-saves --remote

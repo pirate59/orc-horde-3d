@@ -1,14 +1,14 @@
 // The Worker that serves the browser build and keeps cloud saves.
 //
-// Static files (the Unity build in ../../Builds/Web) are served by Workers static
-// assets; only /api/* runs this Worker's code. Saves live in D1.
+// Static files (the Unity build in ./public, committed: see BUILDING.md) are served by
+// Workers static assets; only /api/* runs this Worker's code. Saves live in D1.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "orc-horde-fps",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-01",
   "assets": {
-    "directory": "../../Builds/Web",
+    "directory": "./public",
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },

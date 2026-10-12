@@ -66,7 +66,8 @@ public static class ProjectSetup
     }
 
     /// <summary>
-    /// Builds the browser version to Builds/Web, for the Cloudflare Worker in web/worker to serve.
+    /// Builds the browser version into web/worker/public, for the Cloudflare Worker to serve. The
+    /// output is committed: Cloudflare's build machines can't run Unity, so they only deploy it.
     /// Gzipped with a decompression fallback: the loader unpacks it itself, so it works from any
     /// static host without special Content-Encoding headers (Workers static assets doesn't set them).
     /// </summary>
@@ -84,7 +85,7 @@ public static class ProjectSetup
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {
             scenes = new[] { ScenePath },
-            locationPathName = "Builds/Web",
+            locationPathName = "web/worker/public",
             target = BuildTarget.WebGL,
             options = BuildOptions.None,
         });

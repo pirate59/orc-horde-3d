@@ -181,7 +181,7 @@ The game builds for the browser (WebGL 2) and is served by a Cloudflare Worker (
 Unity -batchmode -quit -projectPath . -executeMethod ProjectSetup.BuildWeb
 ```
 
-This writes `Builds/Web`, about 14 MB. It's gzipped with Unity's decompression fallback, so the loader unpacks it itself and any static host works, including Workers static assets, which don't set Content-Encoding for precompressed files. The page (`Assets/WebGLTemplates/OrcHorde`) fills the window and caps the resolution at 1.5× on high-density screens. In a browser:
+This writes `web/worker/public`, about 14 MB, which is committed (see [BUILDING.md](BUILDING.md)). It's gzipped with Unity's decompression fallback, so the loader unpacks it itself and any static host works, including Workers static assets, which don't set Content-Encoding for precompressed files. The page (`Assets/WebGLTemplates/OrcHorde`) fills the window and caps the resolution at 1.5× on high-density screens. In a browser:
 - The mouse can only be captured on a click, so the game shows "Click to play" until it is.
 - Esc belongs to the page: it frees the mouse, and the game pauses on it (`Core/BrowserBridge.cs`, `Plugins/WebGL/Browser.jslib`).
 - There's no Quit button, since a tab can't close itself.
