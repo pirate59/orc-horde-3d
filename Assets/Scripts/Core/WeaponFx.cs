@@ -123,8 +123,13 @@ namespace OrcHordeFps
             return ps;
         }
 
+        static readonly string[] Args = global::System.Environment.GetCommandLineArgs();
+        static readonly bool NoAir = global::System.Array.IndexOf(Args, "-fxnoair") >= 0, NoFlame = global::System.Array.IndexOf(Args, "-fxnoflame") >= 0,
+            NoTrail = global::System.Array.IndexOf(Args, "-fxnotrail") >= 0;
+
         static void Emit(ParticleSystem ps, Vector3 at, Vector3 velocity, float size, Color color, float life, float spin = 0f)
         {
+            if ((NoAir && ps == air) || (NoFlame && ps == flame)) return;
             var p = new ParticleSystem.EmitParams
             {
                 position = at,
@@ -312,6 +317,7 @@ namespace OrcHordeFps
         /// </summary>
         public static void AirTrail(GameObject on, float width, float time, Color tracer = default)
         {
+            if (NoTrail) return;
             var t = on.AddComponent<TrailRenderer>();
             t.sharedMaterial = Wake;
             t.time = time;
