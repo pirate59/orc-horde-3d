@@ -83,11 +83,19 @@ Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cel
 
 **Rock and country.** Rock columns are weathered: a tilted crown, a bevel falling to the rim and now and then a broken corner, with grooves between neighbours so cliffs read as basalt columns. Their faces carry strata bands, and their tops wear the biome: moss, snow, sand or dust. Beyond the map a ring of hills and mountains (`World/Landscape.cs`) rises from just under the boundary cliffs into the fog. A ravine runs out from every gate on the map's edge and ends in a cave in the hillside. The horde no longer appears at the gate: each orc starts in the dark at the back of the cave, walks out of the mouth (only then can it be shot), down the ravine and in at the gate, where it joins the navmesh (`Enemy.Arrive`, `Landscape.EntryPath`). A gate inside the map, with no country behind it, still spawns at the gate. The base gets an open valley where it sits by the edge.
 
-Tunnels through the map are bored open: the columns either side are the walls, and the columns over the passage, broken off underneath at their own heights, are the roof. You can see through to the far side, and orcs walking through stay visible, but rock is all round them, so they can't be hit until they come out.
+Tunnels through the map are bored open: the columns either side are the walls, and the columns over the passage, broken off underneath at their own heights, are the roof. You can see through to the far side, and orcs walking through stay visible. Your rifle can still hit them through a mouth, but towers ignore them and blasts can't reach them through the rock.
 
 **Scatter** (`World/Scatter.cs`, `Shaders/Scatter.shader`). Grass sways in the wind, with bushes, pebbles, boulders, dead trees, cacti and snow drifts by biome: grass round the rims of ledges, clear of where towers stand, the bigger pieces on rock tops and across the country beyond. The road keeps only a few pebbles, so the fight stays readable. Everything is a small procedural mesh drawn instanced, by chunk, with whole chunks skipped behind the camera or past the fog. The build keeps instancing shader variants (`ProjectSetup`), because the materials are made at runtime where the build can't see them.
 
 The cyan build outlines are full in the build phase and fade to a trace in a fight. Edges are smoothed with 4× MSAA.
+
+**The base** (`World/BaseModels.cs`) is built for its biome, standing in a courtyard cut out of the rock behind the breach point:
+- **Grassland:** a frontier fort: log palisade, two watchtowers, a thatched lodge and a signal fire.
+- **Quarry dirt:** a dwarven forge-hold: a brass-bound door in a rock face, the hold's sigil, forge windows, chimneys and steam vents.
+- **Snow:** a stone keep behind a crenellated curtain wall, with corner towers, braziers and snow on every ledge.
+- **Canyon:** an adobe citadel of stepped clay blocks with beam ends, a domed tower and a striped awning.
+
+All share a thin mint ring where a breach counts. Banners and awnings move in the wind, and a faint blue dome shows while shield layers are up, flaring when one takes a breach. Below two thirds of the base's health smoke rises; below a third fires catch and roofs, crenels and banners fall. A new round puts it all back.
 
 **Sky and light.** Each map is fought under its own mood (`World/Sky.cs`), set to suit it. The pause menu's Sky setting can force one everywhere.
 - **Day:** high sun, blue sky, drifting cumulus, crisp shadows.
@@ -215,6 +223,12 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/abilities" -smokea
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/sky" -smokesky canyon_approach,rimefall_terraces
+```
+
+**Base:** on each listed map, photographs the base by day and night, smoking, burning, and under a flaring shield:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/base" -smokebase quarry_road,canyon_approach,twin_gullies,horseshoe_basin
 ```
 
 **Armoury:** all five towers firing at immortal puppet orcs, then a close-up of each tower and the rifle idle, firing and reloading:

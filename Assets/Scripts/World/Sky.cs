@@ -211,11 +211,10 @@ namespace OrcHordeFps
                 var across = Vector3.Cross(Vector3.up, map.Inward(gate));
                 foreach (var side in new[] { -1f, 1f }) Torch.Create(root.transform, gate + map.Inward(gate) * 2f + across * side * 3.2f, strength);
             }
-            for (int i = 0; i < 4; i++)
-            {
-                float a = i * Mathf.PI / 2 + Mathf.PI / 4;
-                Torch.Create(root.transform, map.Base + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 4.5f, strength);
-            }
+            // Two either side of the base's front, where the horde arrives: the base itself is behind.
+            var facing = MapBuilder.BaseFacing;
+            var flank = Vector3.Cross(Vector3.up, facing);
+            foreach (var s in new[] { -1f, 1f }) Torch.Create(root.transform, map.Base + facing * 2.5f + flank * s * 4.5f, strength);
         }
 
         /// <summary>A post with a flame on it, and a warm light that flickers.</summary>

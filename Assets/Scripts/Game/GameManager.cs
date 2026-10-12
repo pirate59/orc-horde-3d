@@ -312,6 +312,13 @@ namespace OrcHordeFps
             return path != null ? Enemy.Arrive(def, path, toughness) : Enemy.Spawn(def, Map.SpawnPosition(gate), scatter, toughness);
         }
 
+        /// <summary>For the smoke test's base photos: the base at a given share of its health, and its shields.</summary>
+        public void SetBaseForTest(float health, int shields)
+        {
+            BaseHealth = Mathf.RoundToInt(MaxBaseHealth * health);
+            Shields = shields;
+        }
+
         public void OnKilled(Enemy e)
         {
             Kills++;
@@ -326,12 +333,14 @@ namespace OrcHordeFps
                 Shields--;
                 if (shieldTimer <= 0) shieldTimer = Progression.ShieldRecharge;
                 Sfx.UI("laser_zap", 0.8f);
+                BaseRig.I?.Hit(true);
                 Fx.Ring(Map.Base + Vector3.up * 1.5f, 5f, U.Hex(0x7ad0ff), 0.5f);
                 // A boss that walks in still takes the round: the shield turns a blow, not a siege.
                 if (e.Def.BreachLosesRound) Lose($"The {e.Def.Name} reached the {Map.endpoint.name}.");
                 return;
             }
             BaseHealth = Mathf.Max(0, BaseHealth - e.Def.BreachDamage);
+            BaseRig.I?.Hit(false);
             Sfx.UI("breach", 0.7f);
             Fx.Burst(Map.Base + Vector3.up * 2, 3f, U.Hex(0xff4a4a), 0.4f);
             if (e.Def.BreachLosesRound) Lose($"The {e.Def.Name} reached the {Map.endpoint.name}.");

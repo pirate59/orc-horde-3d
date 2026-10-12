@@ -104,6 +104,8 @@ namespace OrcHordeFps
                     if (R() < 0.3f) Drop(centre, apothem * R(0.6f, 0.9f), Kind.Pebble, SurfaceKind.Ledge);
                     continue;
                 }
+                // Nothing in the base's courtyard.
+                if (MapBuilder.InBaseClearing(centre)) continue;
                 // Rock tops: the bigger pieces, now and then.
                 if (R() < 0.35f) Drop(centre, apothem * R(0f, 0.55f), RockKind(), SurfaceKind.Rock);
                 if (biome != "snow" && R() < 0.5f) Drop(centre, apothem * R(0.1f, 0.6f), Kind.Tuft, SurfaceKind.Rock);

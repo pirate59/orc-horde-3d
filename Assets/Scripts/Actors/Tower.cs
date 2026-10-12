@@ -231,7 +231,7 @@ namespace OrcHordeFps
         bool CanSee(Enemy e) => Def.SightPreferred ||
             !Physics.Linecast(muzzle.position, e.AimPoint, SightMask, QueryTriggerInteraction.Ignore);
 
-        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && FlatDistance(e.transform.position) <= Range + e.Def.Radius;
+        bool Valid(Enemy e) => e != null && e.Alive && e.Targetable && !e.InTunnel && FlatDistance(e.transform.position) <= Range + e.Def.Radius;
 
         /// <summary>Within reach but behind the land: for the smoke test's count of blind spots.</summary>
         public bool HiddenByLand(Enemy e) => Valid(e) &&
@@ -311,7 +311,7 @@ namespace OrcHordeFps
                 var end = p + dir * len;
                 foreach (var e in Enemy.All.ToArray())
                 {
-                    if (!e.Alive || !e.Targetable || struck.Contains(e)) continue;
+                    if (!e.Alive || !e.Targetable || e.InTunnel || struck.Contains(e)) continue;
                     if (DistanceToSegment(e.transform.position, p, end) > e.Def.Radius + 0.15f) continue;
                     struck.Add(e);
                     e.TakeDamage(Damage, from: Chest(p));

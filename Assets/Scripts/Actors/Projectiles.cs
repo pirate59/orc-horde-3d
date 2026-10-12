@@ -32,7 +32,9 @@ namespace OrcHordeFps
                     QueryTriggerInteraction.Ignore))
             {
                 var e = hit.collider.GetComponentInParent<Enemy>();
-                if (e != null)
+                // A tower's bullet glances off the rock round an orc in a tunnel.
+                if (e != null && e.InTunnel) Combat.Sparks(hit.point, hit.normal, U.Hex(0xffd27a), 3);
+                else if (e != null)
                 {
                     e.TakeDamage(damage, from: transform.position);
                     Fx.Burst(hit.point, 0.18f, U.Hex(0x6a0c0c), 0.1f);

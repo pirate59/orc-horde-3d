@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest, gallery, stress, armory, relief, abilitiesTest, skyTest;
+        static bool buildTest, gallery, stress, armory, relief, abilitiesTest, skyTest, baseTest;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -82,6 +82,11 @@ namespace OrcHordeFps
                     {
                         abilitiesTest = true;
                         queue = new Queue<string>(new[] { args[i + 1] });
+                    }
+                    if (args[i] == "-smokebase")
+                    {
+                        baseTest = true;
+                        queue = new Queue<string>(args[i + 1].Split(','));
                     }
                     if (args[i] == "-smokesky")
                     {
@@ -168,7 +173,7 @@ namespace OrcHordeFps
                 Application.Quit();
                 yield break;
             }
-            yield return campaign ? Campaign() : relief ? ReliefShots() : skyTest ? SkyShots() : Tour();
+            yield return campaign ? Campaign() : relief ? ReliefShots() : skyTest ? SkyShots() : baseTest ? BaseShots() : Tour();
 
             queue?.Dequeue();
             bool more = queue != null && queue.Count > 0 && (!campaign || --campaignMaps > 0);
@@ -1152,6 +1157,44 @@ namespace OrcHordeFps
             Sky.Apply(map);
             Hud.Hidden = false;
             Time.timeScale = 1f;
+        }
+
+        /// <summary>The base by day and at night, then smoking, burning, and under a flaring shield.</summary>
+        IEnumerator BaseShots()
+        {
+            var gm = GameManager.I;
+            var map = gm.Map;
+            var facing = MapBuilder.BaseFacing;
+            var side = Vector3.Cross(Vector3.up, facing);
+            var look = map.Base - facing * 5f + Vector3.up * 5f;
+            var eye = map.Base + facing * 20f + side * 9f + Vector3.up * 8f;
+            var near = map.Base + facing * 9f - side * 4f + Vector3.up * 3f;
+            Hud.Hidden = true;
+            Sky.Apply(map, Mood.Day);
+            yield return new WaitForSeconds(0.5f);
+            yield return Photo($"{map.id}-base", eye, look, 55f);
+            yield return Photo($"{map.id}-base-near", near, look, 65f);
+            Sky.Apply(map, Mood.Night);
+            yield return new WaitForSeconds(0.5f);
+            yield return Photo($"{map.id}-base-night", eye, look, 55f);
+            Sky.Apply(map, Mood.Day);
+            gm.SetBaseForTest(0.5f, 0);
+            yield return new WaitForSeconds(2.5f);
+            yield return Photo($"{map.id}-base-smoking", eye, look, 55f);
+            gm.SetBaseForTest(0.2f, 0);
+            yield return new WaitForSeconds(2.5f);
+            yield return Photo($"{map.id}-base-burning", eye, look, 55f);
+            gm.SetBaseForTest(1f, 0);
+            yield return new WaitForSeconds(1f);
+            Log($"{map.id,-18} base {map.biome} parts restored, shields={gm.MaxShields}");
+            if (gm.MaxShields > 0)
+            {
+                BaseRig.I.Hit(true);
+                yield return new WaitForSeconds(0.1f);
+                yield return Photo($"{map.id}-base-shield", eye, look, 55f);
+            }
+            Hud.Hidden = false;
+            Sky.Apply(map);
         }
 
         /// <summary>One photograph from a free camera, with the player's own stood down and fog lifted.</summary>

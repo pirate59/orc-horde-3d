@@ -97,7 +97,7 @@ namespace OrcHordeFps
             {
                 if (i >= Enemy.All.Count) continue;
                 var e = Enemy.All[i];
-                if (!e.Targetable) continue;
+                if (!e.Targetable || e.InTunnel) continue;
                 float reach = radius + e.Def.Radius;
                 if (Flat(e.transform.position - at).sqrMagnitude <= reach * reach) yield return e;
             }

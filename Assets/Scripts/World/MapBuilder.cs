@@ -71,6 +71,9 @@ namespace OrcHordeFps
             var corners = grid.CornerOffsets();
             var links = map.links ?? new MapLink[0];
             Relief.Init(map, grid);
+            // The base faces up the road; the rock behind it is cleared for it to stand in.
+            BaseFacing = OpenDirection(grid, map.Base);
+            basePoint = map.Base;
 
             for (int cx = 0; cx < grid.Columns; cx += ChunkSize)
             for (int cy = grid.FirstRow; cy <= grid.LastRow; cy += ChunkSize)
@@ -127,7 +130,7 @@ namespace OrcHordeFps
                     // Each corner's height at the top of the wall: level for a ledge or a bridge's bed,
                     // weathered for rock (see RockTop).
                     var tops = new float[6];
-                    bool weathered = cliff && !Mathf.Approximately(h, Links.DeckHeight);
+                    bool weathered = cliff && !Mathf.Approximately(h, Links.DeckHeight) && !InBaseClearing(center);
                     if (weathered) RockTop(batch, center, corners, c, r, h, tops, Shade(0.85f + noise * 0.25f), side);
                     else
                     {
@@ -215,6 +218,22 @@ namespace OrcHordeFps
         /// inside a bridge's span is cut down to the deck, so the bridge rests on
         /// it; a tunnel's rock stays whole. Relief is level around both.
         /// </summary>
+        static Vector3 basePoint;
+
+        /// <summary>
+        /// The courtyard behind the base: rock there is cut down to a low stone plinth, so the base
+        /// (see BaseModels) stands in the open instead of behind a ring of columns. A plinth a step
+        /// higher than the road, so the horde never walks onto it.
+        /// </summary>
+        public static bool InBaseClearing(Vector3 p)
+        {
+            var d = p - basePoint;
+            d.y = 0;
+            return d.magnitude < 15f && Vector3.Dot(d, -BaseFacing) > -1.5f;
+        }
+
+        const float PlinthHeight = 0.65f;
+
         static float Height(MapData map, HexGrid grid, MapLink[] links, int c, int r)
         {
             char kind = grid.Kind(c, r);
@@ -226,6 +245,7 @@ namespace OrcHordeFps
                 if (!link.IsTunnel && Links.SpanRect(map, link).Contains(new Vector2(center.x, center.z)))
                     return Links.DeckHeight;
             if (InTunnel(map, links, center)) return Relief.Ground(center);
+            if (InBaseClearing(center)) return Relief.CellPeak(cell) + PlinthHeight;
             return RockHeight(c, r, center);
         }
 
@@ -323,7 +343,10 @@ namespace OrcHordeFps
             light.intensity = 2.5f;
         }
 
-        /// <summary>The base: a mint beacon at the path's end, where a breach is counted.</summary>
+        /// <summary>Which way the base looks: up the road the horde comes down.</summary>
+        public static Vector3 BaseFacing { get; private set; } = Vector3.forward;
+
+        /// <summary>The base at the path's end, where a breach is counted, built for the biome (see BaseModels).</summary>
         static void BuildBase(MapData map, HexGrid grid, Transform root)
         {
             var yard = new GameObject(map.endpoint.name).transform;
@@ -332,27 +355,7 @@ namespace OrcHordeFps
             var outward = -OpenDirection(grid, map.Base);
             yard.rotation = Quaternion.LookRotation(outward);
 
-            var metal = Mats.Textured("metal", U.Hex(0x6a717a), smoothness: 0.45f, metallic: 0.5f);
-            var crate = Mats.Textured("wood", Color.white);
-            var crateDark = Mats.Textured("wood", new Color(0.75f, 0.7f, 0.65f));
-            var mint = Mats.Lit(U.Hex(0x5effc4), 2.5f);
-            Shapes.Prim(PrimitiveType.Cylinder, yard, new Vector3(0, 0.3f, 1.5f), new Vector3(4f, 0.3f, 4f), metal, true);
-            Shapes.Prim(PrimitiveType.Cylinder, yard, new Vector3(0, 4f, 1.5f), new Vector3(0.6f, 4f, 0.6f), metal, true);
-            Shapes.Prim(PrimitiveType.Sphere, yard, new Vector3(0, 8.4f, 1.5f), Vector3.one * 1.4f, mint);
-            Shapes.Prim(PrimitiveType.Cylinder, yard, new Vector3(0, 0.62f, 1.5f), new Vector3(4.4f, 0.02f, 4.4f), mint);
-            foreach (var x in new[] { -5f, 5f })
-            {
-                Shapes.Prim(PrimitiveType.Cube, yard, new Vector3(x, 0.9f, 0.5f), new Vector3(1.8f, 1.8f, 1.8f), crate, true);
-                Shapes.Prim(PrimitiveType.Cube, yard, new Vector3(x * 0.8f, 0.7f, 1.2f), new Vector3(1.4f, 1.4f, 1.4f), crateDark, true);
-            }
-            var light = new GameObject("Beacon light").AddComponent<Light>();
-            light.transform.SetParent(yard, false);
-            // A glow about the yard, not a floodlight: anything brighter dyes the orcs mint as they arrive.
-            light.transform.localPosition = new Vector3(0, 6, 0);
-            light.type = LightType.Point;
-            light.color = U.Hex(0x5effc4);
-            light.range = 10;
-            light.intensity = 1.2f;
+            BaseModels.Build(yard, map.biome);
         }
 
         /// <summary>

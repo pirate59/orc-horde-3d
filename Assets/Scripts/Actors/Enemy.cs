@@ -33,6 +33,11 @@ namespace OrcHordeFps
         public Vector3 Velocity => entry != null ? entryVelocity : agent.velocity;
         /// <summary>False while inside a tunnel: out of sight and out of reach.</summary>
         public bool Targetable { get; private set; } = true;
+        /// <summary>
+        /// Walking through a tunnel: rock all round it, so towers and blasts can't reach it, but the
+        /// player, looking in at a mouth, can still shoot it.
+        /// </summary>
+        public bool InTunnel { get; private set; }
         /// <summary>Crossings made by every orc this session, for the smoke test.</summary>
         public static int LinkCrossings;
         /// <summary>Orcs removed for being stranded with no way to the base, for the smoke test.</summary>
@@ -430,8 +435,7 @@ namespace OrcHordeFps
                     crossTo = hit.position;
                 crossDistance = Vector3.Distance(crossFrom, crossTo);
                 crossTravelled = 0;
-                // In the dark of a tunnel it can be seen, through the bore, but not hit: rock is all round it.
-                if (crossing.Tunnel) SetHittable(false);
+                if (crossing.Tunnel) InTunnel = true;
                 LinkCrossings++;
                 crossCount++;
                 if (agent.isOnOffMeshLink) agent.CompleteOffMeshLink();
@@ -450,7 +454,7 @@ namespace OrcHordeFps
             transform.SetPositionAndRotation(pos, heading.sqrMagnitude > 0.01f ? Quaternion.LookRotation(heading) : transform.rotation);
             if (k < 1f) return;
 
-            if (crossing.Tunnel) SetHittable(true);
+            InTunnel = false;
             crossing = null;
             agent.Warp(crossTo);
             agent.updatePosition = true;

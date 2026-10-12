@@ -327,7 +327,8 @@ namespace OrcHordeFps
             {
                 if (i >= Enemy.All.Count) continue;
                 var e = Enemy.All[i];
-                if (!e.Targetable || (skip != null && skip.Contains(e))) continue;
+                // Blasts don't reach through the rock round a tunnel.
+                if (!e.Targetable || e.InTunnel || (skip != null && skip.Contains(e))) continue;
                 var d = e.transform.position - center;
                 d.y = 0;
                 float reach = radius + e.Def.Radius;
