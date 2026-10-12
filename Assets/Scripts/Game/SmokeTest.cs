@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest, gallery, stress, armory, relief, abilitiesTest, skyTest, baseTest;
+        static bool buildTest, gallery, stress, armory, relief, abilitiesTest, skyTest, baseTest, laserTest;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -82,6 +82,11 @@ namespace OrcHordeFps
                     {
                         abilitiesTest = true;
                         queue = new Queue<string>(new[] { args[i + 1] });
+                    }
+                    if (args[i] == "-smokelaser")
+                    {
+                        laserTest = true;
+                        queue = new Queue<string>(args[i + 1].Split(','));
                     }
                     if (args[i] == "-smokebase")
                     {
@@ -173,7 +178,7 @@ namespace OrcHordeFps
                 Application.Quit();
                 yield break;
             }
-            yield return campaign ? Campaign() : relief ? ReliefShots() : skyTest ? SkyShots() : baseTest ? BaseShots() : Tour();
+            yield return campaign ? Campaign() : relief ? ReliefShots() : skyTest ? SkyShots() : baseTest ? BaseShots() : laserTest ? LaserShots() : Tour();
 
             queue?.Dequeue();
             bool more = queue != null && queue.Count > 0 && (!campaign || --campaignMaps > 0);
@@ -1156,6 +1161,59 @@ namespace OrcHordeFps
             yield return Photo($"{map.id}-night-scorch", eye, crowd + Vector3.up * 1.5f, 65f);
             Sky.Apply(map);
             Hud.Hidden = false;
+            Time.timeScale = 1f;
+        }
+
+        /// <summary>
+        /// Lasers on the highest ledges by the road, a round under way, and each of the first few
+        /// beams frozen the moment it's fired and photographed side-on: it should run straight from
+        /// the muzzle, bending only where it bounces.
+        /// </summary>
+        IEnumerator LaserShots()
+        {
+            var gm = GameManager.I;
+            var grid = gm.Grid;
+            BuildController.ClearLayout();
+            var ledges = new List<Vector2Int>();
+            for (int c = 0; c < grid.Columns; c++)
+            for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+            {
+                var cell = new Vector2Int(c, r);
+                if (grid.Kind(cell) != HexGrid.TowerGround) continue;
+                bool byRoad = false;
+                for (int i = 0; i < 6; i++) byRoad |= HexGrid.IsPath(grid.Kind(HexGrid.Across(c, r, i)));
+                if (byRoad) ledges.Add(cell);
+            }
+            ledges.Sort((a, b) => (Relief.TowerGround(b) - Relief.CellPeak(b)).CompareTo(Relief.TowerGround(a) - Relief.CellPeak(a)));
+            var lasers = new List<Tower>();
+            for (int i = 0; i < ledges.Count && lasers.Count < 6; i += 3)
+                lasers.Add(Tower.Create(Towers.Laser, Relief.TowerSpot(ledges[i])));
+            gm.StartRound();
+            Time.timeScale = 2f;
+            int shots = 0;
+            float t = 0;
+            while (shots < 4 && t < 60f && gm.Phase == Phase.Combat)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+                foreach (var l in lasers)
+                {
+                    if (!Mathf.Approximately(l.LastFired, Time.time)) continue;
+                    Time.timeScale = 0f;
+                    Hud.Hidden = true;
+                    var fwd = l.Aim;
+                    fwd.y = 0;
+                    var side = Vector3.Cross(Vector3.up, fwd.normalized);
+                    var mid = l.transform.position + fwd.normalized * 7f;
+                    float height = l.transform.position.y - Relief.Ground(mid);
+                    Log($"laser {shots}: ledge {height:0.0} m above the road");
+                    yield return Photo($"{gm.Map.id}-laser-{shots}", mid + side * 9f + Vector3.up * 2.5f, mid, 70f);
+                    shots++;
+                    Hud.Hidden = false;
+                    Time.timeScale = 2f;
+                    break;
+                }
+            }
             Time.timeScale = 1f;
         }
 

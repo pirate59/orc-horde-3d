@@ -68,7 +68,7 @@ DEVIATION: Orc Horde's maps are flat. Here a smooth height field (`World/Relief.
 The hills matter in a fight:
 
 - **Height is reach.** A tower's range scales with how high it stands above the road it covers: +12% per metre, from −20% in a dip to +30% on a high ledge. An average ledge is level, so height trades reach between spots rather than adding it overall. The placement ghost's ring and hint show the effect before you build, and inspecting a tower shows it after.
-- **The land blocks sight.** An orc over a crest is hidden from towers and your rifle, and Machine Gun bullets strike the ground. The Arc's pulse won't reach through a hill. The Cannon lobs over everything, so it covers blind spots. The Laser still fires without sight, as before, but its beam now runs at chest height over the land, up and down the road.
+- **The land blocks sight.** An orc over a crest is hidden from towers and your rifle, and Machine Gun bullets strike the ground. The Arc's pulse won't reach through a hill. The Cannon lobs over everything, so it covers blind spots. The Laser still fires without sight, as before. Its beam runs dead straight from the muzzle through the target's chest and on, bending only where it glances off rock or a barricade, and stopping where it meets the ground.
 
 Across the campaign, 5–13% of the road within a tower's reach is hidden by the land.
 
@@ -280,6 +280,12 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/sky" -smokesky can
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/base" -smokebase quarry_road,canyon_approach,twin_gullies,horseshoe_basin
+```
+
+**Laser:** puts lasers on the highest ledges by the road, starts a round, and photographs the first few beams side-on, frozen the moment they're fired:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/laser" -smokelaser canyon_approach,vale_common
 ```
 
 **Armoury:** all five towers firing at immortal puppet orcs, then a close-up of each tower and the rifle idle, firing and reloading:

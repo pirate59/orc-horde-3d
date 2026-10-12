@@ -14,8 +14,6 @@ namespace OrcHordeFps
 
         const float RetargetInterval = 0.2f;
         const float TurnDegreesPerSecond = 540f;
-        /// <summary>The laser's plane: chest height on every orc, above the shoulders' lip.</summary>
-        const float BeamHeight = 1.1f;
 
         public TowerDef Def { get; private set; }
         /// <summary>The tower-ground cell it stands on, for saving the layout.</summary>
@@ -286,65 +284,64 @@ namespace OrcHordeFps
         }
 
         /// <summary>
-        /// The laser: down to chest height, then flat along the ground, piercing
-        /// every orc on its line and glancing off rock and barricades. On the
-        /// hills it keeps to chest height over the land rather than one level,
-        /// so it runs up and down the road instead of into it.
+        /// The laser: a straight beam from the muzzle at the target's chest and on past it,
+        /// piercing every orc on its line. It glances off rock and barricades, bending only
+        /// there, and stops where it meets the ground.
         /// </summary>
         void FireBeam()
         {
             struck.Clear();
-            var flat = new Vector3(muzzle.position.x, 0, muzzle.position.z);
-            var dir = target.transform.position - flat;
-            dir.y = 0;
-            dir = Quaternion.Euler(0, Random.Range(-Def.AimDither, Def.AimDither) * Mathf.Rad2Deg, 0) * dir.normalized;
+            var origin = muzzle.position;
+            var aim = target.AimPoint - origin;
+            // A little spread side to side, as Orc Horde's beam has.
+            var dir = (Quaternion.Euler(0, Random.Range(-Def.AimDither, Def.AimDither) * Mathf.Rad2Deg, 0) * aim).normalized;
 
-            Vector3 Chest(Vector3 p) => new Vector3(p.x, Relief.Ground(p) + BeamHeight, p.z);
-            var points = new List<Vector3> { muzzle.position, Chest(flat) };
+            var points = new List<Vector3> { origin };
             float budget = Range * Def.PathBudgetMultiplier;
-            var p = flat;
+            var p = origin;
             for (int bounce = 0; bounce <= 3 && budget > 0.05f; bounce++)
             {
-                bool surface = Physics.Raycast(Chest(p), dir, out var hit, budget, Layers.RockMask | Layers.WallMask,
+                bool surface = Physics.Raycast(p, dir, out var hit, budget, Layers.RockMask | Layers.WallMask | Layers.TerrainMask,
                     QueryTriggerInteraction.Ignore);
                 float len = surface ? hit.distance : budget;
                 var end = p + dir * len;
                 foreach (var e in Enemy.All.ToArray())
                 {
                     if (!e.Alive || !e.Targetable || e.InTunnel || struck.Contains(e)) continue;
-                    if (DistanceToSegment(e.transform.position, p, end) > e.Def.Radius + 0.15f) continue;
+                    if (!Crosses(e, p, end)) continue;
                     struck.Add(e);
-                    e.TakeDamage(Damage, from: Chest(p));
+                    e.TakeDamage(Damage, from: p);
                 }
-                // Laid along the land in short steps, so the beam reads over a rise.
-                int steps = Mathf.Max(1, Mathf.CeilToInt(len / 1.5f));
-                for (int k = 1; k <= steps; k++) points.Add(Chest(Vector3.Lerp(p, end, k / (float)steps)));
-                p = end;
+                points.Add(end);
                 budget -= len;
                 if (!surface) break;
-                dir = Vector3.Reflect(dir, hit.normal);
-                dir.y = 0;
-                dir.Normalize();
-                p += dir * 0.02f;
+                Fx.Burst(end, 0.25f, Def.Color, 0.12f);
+                // The ground ends it; rock and barricades turn it.
+                if (((1 << hit.collider.gameObject.layer) & Layers.TerrainMask) != 0) break;
+                dir = Vector3.Reflect(dir, hit.normal).normalized;
+                p = end + dir * 0.02f;
             }
             Fx.Polyline(points.ToArray(), Def.Color, 0.07f, 0.09f);
             Fx.Polyline(points.ToArray(), Color.white, 0.025f, 0.06f);
             Sfx.At("laser_zap", muzzle.position);
             Combat.Flash(points[points.Count - 1], Def.Color, 5f, 2f, 0.1f);
             Combat.Sparks(points[points.Count - 1], -dir, Def.Color, 3);
-            Fx.Burst(points[points.Count - 1], 0.25f, Def.Color, 0.12f);
             flash = 1f;
         }
 
-        /// <summary>Distance on the ground from a point to a segment.</summary>
-        static float DistanceToSegment(Vector3 x, Vector3 a, Vector3 b)
+        /// <summary>
+        /// Whether a beam segment passes through an orc: within its radius of its body's axis,
+        /// at a height between its feet and the top of its head.
+        /// </summary>
+        static bool Crosses(Enemy e, Vector3 a, Vector3 b)
         {
-            var p = new Vector2(x.x, x.z);
-            var u = new Vector2(a.x, a.z);
-            var v = new Vector2(b.x, b.z);
-            var d = v - u;
-            float t = d.sqrMagnitude < 1e-6f ? 0 : Mathf.Clamp01(Vector2.Dot(p - u, d) / d.sqrMagnitude);
-            return Vector2.Distance(p, u + d * t);
+            var foot = e.transform.position;
+            var d = b - a;
+            var flat = new Vector2(d.x, d.z);
+            float t = flat.sqrMagnitude < 1e-6f ? 0 : Mathf.Clamp01(Vector2.Dot(new Vector2(foot.x - a.x, foot.z - a.z), flat) / flat.sqrMagnitude);
+            var q = a + d * t;
+            float across = Vector2.Distance(new Vector2(q.x, q.z), new Vector2(foot.x, foot.z));
+            return across <= e.Def.Radius + 0.2f && q.y >= foot.y - 0.2f && q.y <= foot.y + e.Def.Height + 0.2f;
         }
 
         void Pulse()
@@ -397,6 +394,10 @@ namespace OrcHordeFps
             t = Vector3.Distance(muzzle.position, e.AimPoint + v * t) / speed;
             return e.AimPoint + v * t;
         }
+
+        /// <summary>When it last fired, and which way: for the smoke test's photographs.</summary>
+        public float LastFired => lastFired;
+        public Vector3 Aim => head.forward;
 
         void OnDestroy()
         {
