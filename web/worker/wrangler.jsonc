@@ -17,7 +17,7 @@
       "binding": "DB",
       "database_name": "orc-horde-saves",
       // Filled in once the database exists: `npx wrangler d1 create orc-horde-saves`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "5c69ff96-47d4-4c28-9740-310c9c64e6bd",
       "migrations_dir": "migrations"
     }
   ],
