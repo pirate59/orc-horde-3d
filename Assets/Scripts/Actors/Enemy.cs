@@ -30,7 +30,7 @@ namespace OrcHordeFps
         public float Toughness { get; private set; } = 1f;
         public bool Alive => Health > 0f;
         public Vector3 AimPoint => transform.position + Vector3.up * Def.Height * 0.5f;
-        public Vector3 Velocity => agent.velocity;
+        public Vector3 Velocity => entry != null ? entryVelocity : agent.velocity;
         /// <summary>False while inside a tunnel: out of sight and out of reach.</summary>
         public bool Targetable { get; private set; } = true;
         /// <summary>Crossings made by every orc this session, for the smoke test.</summary>
@@ -43,7 +43,7 @@ namespace OrcHordeFps
 
         /// <summary>Path left to the base, for "first" targeting. Smaller is further along.</summary>
         public float Remaining =>
-            agent.isOnNavMesh && !agent.pathPending && agent.hasPath && !float.IsInfinity(agent.remainingDistance)
+            agent != null && agent.isOnNavMesh && !agent.pathPending && agent.hasPath && !float.IsInfinity(agent.remainingDistance)
                 ? agent.remainingDistance
                 : Vector3.Distance(transform.position, GameManager.I.Map.Base) * 1.5f;
 
@@ -78,6 +78,36 @@ namespace OrcHordeFps
 
         /// <param name="toughness">Health multiplier. Only orcs drawn from the round's budget carry the round's;
         /// set pieces (bosses, guaranteed arrivals, escorts) are fixed in Orc Horde and stay at 1.</param>
+        /// <summary>
+        /// The way in from a gate's cave, walked by hand before the orc joins the map's navmesh:
+        /// the back of the tunnel, the mouth, the gate. Null once it is in.
+        /// </summary>
+        Vector3[] entry;
+        int entryLeg;
+        float entrySide;
+        Vector3 entryVelocity;
+
+        /// <summary>
+        /// Comes in by a gate's cave: starts in the dark at the back of the tunnel, walks out of the
+        /// mouth (only then can it be shot), down the valley and in at the gate, and there joins the map.
+        /// </summary>
+        public static Enemy Arrive(EnemyDef def, Vector3[] path, float toughness = 1f)
+        {
+            var dir = path[1] - path[0];
+            dir.y = 0;
+            var e = new GameObject(def.Name).AddComponent<Enemy>();
+            e.entry = path;
+            e.entryLeg = 1;
+            // Spread across the tunnel, and a little along it, so a crowd doesn't walk out as one.
+            e.entrySide = Random.Range(-1f, 1f);
+            var across = Vector3.Cross(Vector3.up, dir.normalized);
+            e.transform.SetPositionAndRotation(path[0] + across * e.entrySide * 1.6f - dir.normalized * Random.Range(0f, 2.5f),
+                Quaternion.LookRotation(dir));
+            e.Init(def, toughness);
+            e.SetHittable(false);
+            return e;
+        }
+
         public static Enemy Spawn(EnemyDef def, Vector3 near, float scatter = 3f, float toughness = 1f)
         {
             var p = near + new Vector3(Random.Range(-scatter, scatter), 0, Random.Range(-scatter, scatter));
@@ -96,7 +126,18 @@ namespace OrcHordeFps
             Toughness = toughness;
             MaxHealth = Health = def.MaxHealth * Toughness;
             BuildBody();
+            // One coming in by a cave gets its agent at the gate, where there is navmesh under it.
+            if (entry == null) CreateAgent();
 
+            nextThink = Time.time + Random.value;
+            nextCharge = Time.time + def.ChargeInterval;
+            All.Add(this);
+            if (def.IsBoss) Sfx.At("boss_roar", transform.position, 1f, Voice);
+        }
+
+        void CreateAgent()
+        {
+            var def = Def;
             agent = gameObject.AddComponent<NavMeshAgent>();
             agent.radius = Mathf.Max(def.Radius, 0.25f);
             agent.height = def.Height;
@@ -111,11 +152,46 @@ namespace OrcHordeFps
             // Big units shoulder through; small ones give way.
             agent.avoidancePriority = Mathf.Clamp(70 - Mathf.RoundToInt(def.Radius * 40), 10, 90);
             if (agent.isOnNavMesh) agent.SetDestination(Goal);
+        }
 
-            nextThink = Time.time + Random.value;
-            nextCharge = Time.time + def.ChargeInterval;
-            All.Add(this);
-            if (def.IsBoss) Sfx.At("boss_roar", transform.position, 1f, Voice);
+        /// <summary>Whether shots and blasts can find it, without hiding it: for the dark of a cave.</summary>
+        void SetHittable(bool value)
+        {
+            Targetable = value;
+            foreach (var c in colliders) if (c != null) c.enabled = value;
+        }
+
+        /// <summary>Walks the way in from the cave, leg by leg, then steps onto the navmesh at the gate.</summary>
+        void Enter()
+        {
+            var target = entry[entryLeg];
+            var dir = entry[entryLeg] - entry[entryLeg - 1];
+            dir.y = 0;
+            target += Vector3.Cross(Vector3.up, dir.normalized) * entrySide * 1.6f;
+            var to = target - transform.position;
+            to.y = 0;
+            float slow = Time.time < slowUntil ? slowFactor : 1f;
+            float step = Def.Speed * slow * BossSpeed() * Time.deltaTime;
+            entryVelocity = to.sqrMagnitude > 0.0001f ? to.normalized * Def.Speed * slow : Vector3.zero;
+            if (to.magnitude > step)
+            {
+                var p = transform.position + to.normalized * step;
+                // The valley floor is level ground all the way in to the gate.
+                p.y = 0f;
+                transform.SetPositionAndRotation(p,
+                    Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(to), Def.TurnDegreesPerSecond * Time.deltaTime));
+                return;
+            }
+            transform.position = new Vector3(target.x, transform.position.y, target.z);
+            entryLeg++;
+            // Out of the mouth: now it can be seen to and shot.
+            if (entryLeg == 2) SetHittable(true);
+            if (entryLeg < entry.Length) return;
+
+            entry = null;
+            entryVelocity = Vector3.zero;
+            if (NavMesh.SamplePosition(transform.position, out var hit, 6f, NavMesh.AllAreas)) transform.position = hit.position;
+            CreateAgent();
         }
 
         /// <summary>Bigger orcs speak lower.</summary>
@@ -283,6 +359,7 @@ namespace OrcHordeFps
         {
             if (!Alive) return;
             if (puppet) { UpdateFlash(); return; }
+            if (entry != null) { Enter(); UpdateFlash(); return; }
             orc.Attacking = (wallTarget != null && agent.isOnNavMesh && agent.isStopped) || hitPlayerThisFrame;
             orc.Holding = Def.IsBoss && Time.time < pausedUntil || (Def.ChargeInterval > 0 && Time.time < windupEnds);
             hitPlayerThisFrame = false;
@@ -353,7 +430,8 @@ namespace OrcHordeFps
                     crossTo = hit.position;
                 crossDistance = Vector3.Distance(crossFrom, crossTo);
                 crossTravelled = 0;
-                if (crossing.Tunnel) SetTargetable(false);
+                // In the dark of a tunnel it can be seen, through the bore, but not hit: rock is all round it.
+                if (crossing.Tunnel) SetHittable(false);
                 LinkCrossings++;
                 crossCount++;
                 if (agent.isOnOffMeshLink) agent.CompleteOffMeshLink();
@@ -372,7 +450,7 @@ namespace OrcHordeFps
             transform.SetPositionAndRotation(pos, heading.sqrMagnitude > 0.01f ? Quaternion.LookRotation(heading) : transform.rotation);
             if (k < 1f) return;
 
-            if (crossing.Tunnel) SetTargetable(true);
+            if (crossing.Tunnel) SetHittable(true);
             crossing = null;
             agent.Warp(crossTo);
             agent.updatePosition = true;
@@ -380,12 +458,6 @@ namespace OrcHordeFps
             agent.SetDestination(Goal);
         }
 
-        void SetTargetable(bool value)
-        {
-            Targetable = value;
-            foreach (var r in bodyRenderers) r.enabled = value;
-            foreach (var c in colliders) c.enabled = value;
-        }
 
         float BossSpeed()
         {

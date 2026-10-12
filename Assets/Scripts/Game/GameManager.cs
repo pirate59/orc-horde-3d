@@ -235,7 +235,7 @@ namespace OrcHordeFps
             {
                 next ??= PickEnemy(ms);
                 if (next == null || pool < next.Pressure) break;
-                if (Enemy.Spawn(next, Map.SpawnPosition(PickSpawn(ms)), SpawnScatter, Toughness) == null) break;
+                if (SpawnAt(next, PickSpawn(ms), SpawnScatter, Toughness) == null) break;
                 pool -= next.Pressure;
                 spent += next.Pressure;
                 spentByType[next] = spentByType.TryGetValue(next, out var s) ? s + next.Pressure : next.Pressure;
@@ -254,7 +254,7 @@ namespace OrcHordeFps
                 var (at, def, spawn) = scheduled[i];
                 if (RoundTime < at) continue;
                 var gate = string.IsNullOrEmpty(spawn) ? PickSpawn(ms) : spawn;
-                if (Enemy.Spawn(def, Map.SpawnPosition(gate), 1f) != null) scheduled.RemoveAt(i);
+                if (SpawnAt(def, gate, 1f, 1f) != null) scheduled.RemoveAt(i);
             }
 
             bool spawningDone = RoundTime >= window && scheduled.Count == 0;
@@ -300,6 +300,16 @@ namespace OrcHordeFps
                 if (roll <= 0) return r.spawn;
             }
             return Map.spawns[0].id;
+        }
+
+        /// <summary>
+        /// Brings an orc in at a gate: out of the gate's cave where it has one, so the horde is seen
+        /// coming rather than appearing, or straight onto the road where it hasn't.
+        /// </summary>
+        Enemy SpawnAt(EnemyDef def, string gate, float scatter, float toughness)
+        {
+            var path = Landscape.EntryPath(gate);
+            return path != null ? Enemy.Arrive(def, path, toughness) : Enemy.Spawn(def, Map.SpawnPosition(gate), scatter, toughness);
         }
 
         public void OnKilled(Enemy e)

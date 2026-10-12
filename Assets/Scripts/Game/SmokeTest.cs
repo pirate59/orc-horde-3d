@@ -114,6 +114,7 @@ namespace OrcHordeFps
                     }
                 }
                 if (System.Array.IndexOf(args, "-smokenogun") >= 0) gunner = false;
+                if (System.Array.IndexOf(args, "-smokenocaves") >= 0) Landscape.CavesOn = false;
                 if (outDir == null) return;
                 Directory.CreateDirectory(outDir);
                 // The map already built is the first one tested.
@@ -1118,6 +1119,23 @@ namespace OrcHordeFps
                     var spot = Relief.TowerSpot(ledge);
                     var away = crowd - spot;
                     away.y = 0;
+                    // Out through the first gate at its cave, where the horde comes from.
+                    var g = map.spawns[0];
+                    var gatePos = map.World(g.x, g.y);
+                    var inward = map.Inward(gatePos);
+                    if (Landscape.EntryPath(g.id) != null)
+                    {
+                        yield return Photo($"{map.id}-day-cave", gatePos + inward * 7f + Vector3.up * 3f, gatePos - inward * Landscape.CaveDistance + Vector3.up * 2.5f, 60f);
+                        var side = Vector3.Cross(Vector3.up, inward);
+                        yield return Photo($"{map.id}-day-cave-aerial", gatePos + inward * 12f + side * 14f + Vector3.up * 22f, gatePos - inward * (Landscape.CaveDistance + 4f), 60f);
+                    }
+                    // Down the length of a tunnel, from a little way out of its entry.
+                    if (Links.All.Count > 0)
+                    {
+                        var tunnel = Links.All.Find(l => l.Tunnel);
+                        if (tunnel != null)
+                            yield return Photo($"{map.id}-day-tunnel", tunnel.Entry - tunnel.Direction * 9f + Vector3.up * 2.2f, tunnel.Exit + Vector3.up * 1.6f, 60f);
+                    }
                     yield return Photo($"{map.id}-day-ledge", spot - away.normalized * 4.5f + Vector3.up * 2.2f, spot + away.normalized * 3f, 60f);
                 }
                 Log($"{map.id,-18} {mood,-9} fog={RenderSettings.fogColor} sun={RenderSettings.sun.color} x{RenderSettings.sun.intensity:0.00}");

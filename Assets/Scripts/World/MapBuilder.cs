@@ -78,6 +78,7 @@ namespace OrcHordeFps
                 var rock = new MeshBatch();
                 var ground = new MeshBatch();
                 var path = new MeshBatch();
+                var bore = new MeshBatch();
                 var edges = new MeshBatch();
 
                 for (int c = cx; c < Mathf.Min(cx + ChunkSize, grid.Columns); c++)
@@ -87,6 +88,32 @@ namespace OrcHordeFps
                     var center = grid.Center(c, r);
                     float noise = Mathf.PerlinNoise(c * 0.31f + 7f, r * 0.29f + 3f);
                     float h = Height(map, grid, links, c, r);
+
+                    // Rock a tunnel runs through is bored out: its neighbours' faces become the passage
+                    // walls, and its floor is drawn only, so the navmesh still crosses by the link.
+                    if (InTunnel(map, links, center))
+                    {
+                        bore.AddTop(center, corners, Shade(0.75f + noise * 0.1f), PathTile, Relief.Ground);
+                        // The roof is the column field carried on over the passage: each column weathered at
+                        // the top as usual, and broken off underneath at its own height, so the bore's
+                        // ceiling is a ragged run of column ends.
+                        var crown = new float[6];
+                        var faceShade = Shade(0.78f + noise * 0.2f);
+                        RockTop(rock, center, corners, c, r, RockHeight(c, r, center), crown, Shade(0.85f + noise * 0.25f), faceShade);
+                        float under = Links.TunnelRoof + Hash(c, r, 20) * 0.8f;
+                        rock.AddUnder(center, corners, under, faceShade * 0.55f, SideTile);
+                        for (int s = 0; s < 6; s++)
+                        {
+                            var n = HexGrid.Across(c, r, s);
+                            var nc = grid.Center(n);
+                            // Against solid rock nothing shows. Anywhere else (more of the roof, or the road at
+                            // either mouth) the column's side runs down to its own broken end, so neighbouring
+                            // columns broken off at different heights still close up into one mass.
+                            if (grid.Kind(n) == HexGrid.Rock && !InTunnel(map, links, nc)) continue;
+                            rock.AddSide(center, corners[s], corners[(s + 1) % 6], under, under, crown[s], crown[(s + 1) % 6], faceShade, SideTile);
+                        }
+                        continue;
+                    }
 
                     if (HexGrid.IsPath(kind))
                     {
@@ -131,12 +158,13 @@ namespace OrcHordeFps
                 rock.Emit(root, "Rock", rockMats, Layers.Rock, collider: true);
                 ground.Emit(root, "Tower ground", groundMats, Layers.BuildGround, collider: true);
                 path.Emit(root, "Path", pathMats, Layers.Road, collider: true);
+                bore.Emit(root, "Tunnel floor", pathMats, -1, collider: false);
                 edges.Emit(root, "Build edge", new[] { edgeMat }, -1, collider: false);
             }
             root.gameObject.AddComponent<BuildEdgeGlow>().Init(edgeMat);
 
             // The country round the map, then the scatter, which finds its footing by raycast.
-            Landscape.Build(map, root, Mats.Terrain($"ground_{biome}", Color.Lerp(cap, new Color(0.55f, 0.55f, 0.55f), 0.35f)));
+            Landscape.Build(map, root, Mats.Terrain($"ground_{biome}", Color.Lerp(cap, new Color(0.55f, 0.55f, 0.55f), 0.35f)), rockMats[1]);
             Physics.SyncTransforms();
             Scatter.Build(map, grid, root);
 
@@ -197,7 +225,20 @@ namespace OrcHordeFps
             foreach (var link in links)
                 if (!link.IsTunnel && Links.SpanRect(map, link).Contains(new Vector2(center.x, center.z)))
                     return Links.DeckHeight;
-            return Relief.CellPeak(cell) + CliffMin + Mathf.PerlinNoise(c * 0.37f, r * 0.41f) * CliffVariance;
+            if (InTunnel(map, links, center)) return Relief.Ground(center);
+            return RockHeight(c, r, center);
+        }
+
+        /// <summary>A rock column's height, from the land under it.</summary>
+        static float RockHeight(int c, int r, Vector3 center) =>
+            Relief.CellPeak(new Vector2Int(c, r)) + CliffMin + Mathf.PerlinNoise(c * 0.37f, r * 0.41f) * CliffVariance;
+
+        /// <summary>Whether a tunnel runs through this point: its rock is bored out.</summary>
+        static bool InTunnel(MapData map, MapLink[] links, Vector3 p)
+        {
+            foreach (var link in links)
+                if (link.IsTunnel && Links.SpanRect(map, link).Contains(new Vector2(p.x, p.z))) return true;
+            return false;
         }
 
         /// <summary>Invisible walls at the map's edge, where the path runs out into a gate or the yard.</summary>
@@ -393,6 +434,17 @@ namespace OrcHordeFps
                 {
                     Vector3 a = middle, b = ring[i], c = ring[(i + 1) % ring.Length];
                     Tri(0, a, b, c, Plan(a, tile), Plan(b, tile), Plan(c, tile), Vector3.up, col);
+                }
+            }
+
+            /// <summary>A hex face looking down, on the walls' submesh: the broken end of a column overhead.</summary>
+            public void AddUnder(Vector3 center, Vector3[] corners, float y, Color col, float tile)
+            {
+                var mid = center + Vector3.up * y;
+                for (int i = 0; i < 6; i++)
+                {
+                    Vector3 a = mid, b = mid + corners[i], c = mid + corners[(i + 1) % 6];
+                    Tri(1, a, b, c, Plan(a, tile), Plan(b, tile), Plan(c, tile), Vector3.down, col);
                 }
             }
 

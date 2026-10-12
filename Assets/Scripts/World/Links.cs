@@ -16,6 +16,8 @@ namespace OrcHordeFps
     public static class Links
     {
         public const float DeckHeight = 3f;
+        /// <summary>The underside of a tunnel's roof: clear of the tallest boss.</summary>
+        public const float TunnelRoof = 5f;
         /// <summary>How far past each face the link's ends reach for the floor.</summary>
         const float FaceReach = 3f;
 
@@ -63,14 +65,10 @@ namespace OrcHordeFps
 
             if (link.IsTunnel)
             {
-                // Dark mouths in the rock at both faces.
-                var dark = Mats.Lit(U.Hex(0x0a0b0d));
-                var stone = Mats.Textured("stone", U.Hex(0x8a7f78), new Vector2(4, 1));
-                foreach (var end in new[] { -1f, 1f })
-                {
-                    Shapes.Prim(PrimitiveType.Cube, go, new Vector3(0, 1.8f, end * (length / 2 + 0.05f)), new Vector3(width * 0.8f, 3.6f, 0.2f), dark);
-                    Shapes.Prim(PrimitiveType.Cube, go, new Vector3(0, 3.9f, end * (length / 2 + 0.2f)), new Vector3(width * 0.9f, 0.5f, 0.5f), stone);
-                }
+                // A bore through the rock, open at both ends, built with the rock itself (MapBuilder):
+                // the columns either side are its walls, and the columns over it, broken off underneath
+                // high enough for the biggest boss, are its roof. Light shows through from the far end,
+                // and so does whatever is walking through.
                 return;
             }
 
