@@ -70,7 +70,7 @@ public static class ProjectSetup
     {
         var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset")[0]);
         var list = settings.FindProperty("m_AlwaysIncludedShaders");
-        foreach (var name in new[] { "Standard", "Sprites/Default", "OrcHorde/VertexLit", "OrcHorde/TexturedVertexLit", "OrcHorde/Orc", "OrcHorde/Sky", "Hidden/OrcHorde/PostFx" })
+        foreach (var name in new[] { "Standard", "Sprites/Default", "OrcHorde/VertexLit", "OrcHorde/TexturedVertexLit", "OrcHorde/Orc", "OrcHorde/Sky", "Hidden/OrcHorde/PostFx", "OrcHorde/Scatter" })
         {
             var shader = Shader.Find(name);
             bool present = false;
@@ -80,6 +80,9 @@ public static class ProjectSetup
             list.InsertArrayElementAtIndex(list.arraySize);
             list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = shader;
         }
+        // The scatter is drawn instanced with materials made at runtime, which the build can't
+        // see, so it would strip the instancing variants as unused. Keep them all.
+        settings.FindProperty("m_InstancingStripping").intValue = 2;
         settings.ApplyModifiedPropertiesWithoutUndo();
     }
 

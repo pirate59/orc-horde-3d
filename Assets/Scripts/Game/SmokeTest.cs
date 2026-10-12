@@ -1041,12 +1041,13 @@ namespace OrcHordeFps
             Hud.Hidden = true;
 
             // From beside the base, looking back up the road at the horde.
+            // The front of the horde: the orc nearest the base, which is always on a road.
             Vector3 crowd = map.Base;
-            if (Enemy.All.Count > 0)
+            float nearest = float.MaxValue;
+            foreach (var e in Enemy.All)
             {
-                crowd = Vector3.zero;
-                foreach (var e in Enemy.All) crowd += e.transform.position;
-                crowd /= Enemy.All.Count;
+                float d = (e.transform.position - map.Base).sqrMagnitude;
+                if (d < nearest && (e.transform.position - map.Base).magnitude > 12f) { nearest = d; crowd = e.transform.position; }
             }
             // On the road behind the horde's front, a little above head height, looking up at it.
             var back = map.Base - crowd;
@@ -1098,6 +1099,26 @@ namespace OrcHordeFps
                     PostFx.ShaftsOn = false;
                     yield return Photo($"{map.id}-dusk-sky-noshafts", from, from + skyward * 10f, 70f);
                     PostFx.ShaftsOn = true;
+                }
+                if (mood == Mood.Day)
+                {
+                    Log($"{map.id,-18} scatter={Scatter.Placed} msaa={QualitySettings.antiAliasing}");
+                    // Close in on a ledge by the road, for the grass and the rock beside it.
+                    var grid = gm.Grid;
+                    var ledge = grid.CellAt(crowd);
+                    float best = float.MaxValue;
+                    for (int c = 0; c < grid.Columns; c++)
+                    for (int r = grid.FirstRow; r <= grid.LastRow; r++)
+                    {
+                        var cell = new Vector2Int(c, r);
+                        if (grid.Kind(cell) != HexGrid.TowerGround) continue;
+                        float d = (grid.Center(cell) - crowd).sqrMagnitude;
+                        if (d < best) { best = d; ledge = cell; }
+                    }
+                    var spot = Relief.TowerSpot(ledge);
+                    var away = crowd - spot;
+                    away.y = 0;
+                    yield return Photo($"{map.id}-day-ledge", spot - away.normalized * 4.5f + Vector3.up * 2.2f, spot + away.normalized * 3f, 60f);
                 }
                 Log($"{map.id,-18} {mood,-9} fog={RenderSettings.fogColor} sun={RenderSettings.sun.color} x{RenderSettings.sun.intensity:0.00}");
             }

@@ -46,18 +46,28 @@ namespace OrcHordeFps
             // baked cliff face on every side. Cliff tops reuse the rock slabs, darker.
             string biome = System.Array.IndexOf(new[] { "grassland", "canyon", "snow", "dirt" }, map.biome) >= 0 ? map.biome : "dirt";
             var cliffTint = new Color(Mathf.Min(1, rockColor.r * 1.9f), Mathf.Min(1, rockColor.g * 1.9f), Mathf.Min(1, rockColor.b * 1.9f));
+            // Rock tops wear the biome: moss on grassland, snow, sand on the canyon, dust in the quarry.
+            var cap = biome switch
+            {
+                "snow" => new Color(0.95f, 0.97f, 1f),
+                "grassland" => new Color(0.5f, 0.66f, 0.38f),
+                "canyon" => new Color(0.86f, 0.7f, 0.52f),
+                _ => new Color(0.66f, 0.62f, 0.56f),
+            };
             var rockMats = new[]
             {
-                Mats.Terrain($"ground_{biome}", biome == "snow" ? new Color(0.92f, 0.94f, 0.98f) : new Color(0.62f, 0.6f, 0.58f)),
-                Mats.Terrain("cliff", cliffTint, 1.2f),
+                Mats.Terrain($"ground_{biome}", cap),
+                new Material(Mats.Terrain("cliff", cliffTint, 1.2f)),
             };
+            rockMats[1].SetFloat("_Bands", 1f);
             var groundMats = new[]
             {
                 Mats.Terrain($"ground_{biome}", new Color(1.05f, 1.02f, 0.96f)),
                 Mats.Terrain("cliff", Color.Lerp(cliffTint, groundColor, 0.4f), 1.2f),
             };
             var pathMats = new[] { Mats.Terrain($"path_{biome}", Color.white, 0.8f) };
-            var edgeMat = Mats.Lit(U.Hex(0x3ec9e0), 1.2f);
+            // Its own material, so the glow can fade in combat without touching anything else cyan.
+            var edgeMat = new Material(Mats.Lit(U.Hex(0x3ec9e0), 1.2f));
             var corners = grid.CornerOffsets();
             var links = map.links ?? new MapLink[0];
             Relief.Init(map, grid);
@@ -86,19 +96,33 @@ namespace OrcHordeFps
 
                     bool cliff = kind == HexGrid.Rock;
                     var batch = cliff ? rock : ground;
-                    batch.AddTop(center + Vector3.up * h, corners, Shade(0.85f + noise * 0.25f), TopTile, null);
                     var side = Shade(0.78f + noise * 0.2f);
+                    // Each corner's height at the top of the wall: level for a ledge or a bridge's bed,
+                    // weathered for rock (see RockTop).
+                    var tops = new float[6];
+                    bool weathered = cliff && !Mathf.Approximately(h, Links.DeckHeight);
+                    if (weathered) RockTop(batch, center, corners, c, r, h, tops, Shade(0.85f + noise * 0.25f), side);
+                    else
+                    {
+                        batch.AddTop(center + Vector3.up * h, corners, Shade(0.85f + noise * 0.25f), TopTile, null);
+                        for (int i = 0; i < 6; i++) tops[i] = h;
+                    }
 
                     for (int s = 0; s < 6; s++)
                     {
                         var n = HexGrid.Across(c, r, s);
                         Vector3 a = corners[s], b = corners[(s + 1) % 6];
-                        bool road = HexGrid.IsPath(grid.Kind(n));
+                        char nk = grid.Kind(n);
+                        bool road = HexGrid.IsPath(nk);
                         // Against the road the wall's foot follows the slope; against other ground it is level.
+                        // Against weathered rock it runs on down into the neighbour, so the groove between
+                        // two columns' bevels never shows daylight.
                         float nh = Height(map, grid, links, n.x, n.y);
+                        if (nk == HexGrid.Rock && !Mathf.Approximately(nh, Links.DeckHeight)) nh -= RockBevelDeepest;
                         float lowA = road ? Relief.Ground(center + a) : nh, lowB = road ? Relief.Ground(center + b) : nh;
-                        if (lowA >= h && lowB >= h) continue;
-                        batch.AddSide(center, a, b, lowA, lowB, h, side, SideTile);
+                        float highA = tops[s], highB = tops[(s + 1) % 6];
+                        if (lowA >= highA && lowB >= highB) continue;
+                        batch.AddSide(center, a, b, lowA, lowB, highA, highB, side, SideTile);
                         if (!cliff && road)
                             edges.AddStrip(center, corners[s], corners[(s + 1) % 6], h + 0.01f, 0.08f);
                     }
@@ -109,11 +133,53 @@ namespace OrcHordeFps
                 path.Emit(root, "Path", pathMats, Layers.Road, collider: true);
                 edges.Emit(root, "Build edge", new[] { edgeMat }, -1, collider: false);
             }
+            root.gameObject.AddComponent<BuildEdgeGlow>().Init(edgeMat);
+
+            // The country round the map, then the scatter, which finds its footing by raycast.
+            Landscape.Build(map, root, Mats.Terrain($"ground_{biome}", Color.Lerp(cap, new Color(0.55f, 0.55f, 0.55f), 0.35f)));
+            Physics.SyncTransforms();
+            Scatter.Build(map, grid, root);
 
             BuildBounds(map, root);
             foreach (var s in map.spawns) BuildGate(map, grid, root, s);
             BuildBase(map, grid, root);
             foreach (var link in links) Links.BuildVisual(map, link, root);
+        }
+
+        /// <summary>How far a rock column's weathered rim falls below its top, at most.</summary>
+        const float RockBevelDeepest = 0.9f;
+
+        static float Hash(int c, int r, int k) => Mathf.Abs(Mathf.Sin(c * 127.1f + r * 311.7f + k * 74.7f) * 43758.5453f) % 1f;
+
+        /// <summary>
+        /// A rock column's top, weathered: a slightly tilted crown inset from the
+        /// edge, then a bevel falling away to the rim, deeper at some corners than
+        /// others, and now and then a corner broken right off. Neighbouring columns'
+        /// bevels meet in a groove, so a cliff reads as basalt columns, not blocks.
+        /// Fills <paramref name="tops"/> with each corner's height at the rim.
+        /// </summary>
+        static void RockTop(MeshBatch batch, Vector3 center, Vector3[] corners, int c, int r, float h, float[] tops, Color topColor, Color sideColor)
+        {
+            const float Inset = 0.78f;
+            var crown = new Vector3[6];
+            var rim = new Vector3[6];
+            float tilt = (Hash(c, r, 9) - 0.5f) * 0.5f;
+            for (int i = 0; i < 6; i++)
+            {
+                float lift = (Hash(c, r, i) - 0.5f) * 0.35f + tilt * Mathf.Cos(i * Mathf.PI / 3);
+                float drop = 0.3f + Hash(c, r, i + 6) * 0.35f;
+                if (Hash(c, r, 12) < 0.18f && i == (int)(Hash(c, r, 13) * 6)) drop = RockBevelDeepest;
+                crown[i] = center + corners[i] * Inset + Vector3.up * (h + lift);
+                rim[i] = center + corners[i] + Vector3.up * (h + lift - drop);
+                tops[i] = rim[i].y;
+            }
+            batch.AddFan(center + Vector3.up * (h + 0.06f), crown, topColor, TopTile);
+            for (int i = 0; i < 6; i++)
+            {
+                int j = (i + 1) % 6;
+                batch.AddQuad(1, crown[i], crown[j], rim[j], rim[i], (corners[i] + corners[j]) / 2 + Vector3.up * 0.4f,
+                    sideColor * 0.95f, SideTile);
+            }
         }
 
         /// <summary>
@@ -309,15 +375,34 @@ namespace OrcHordeFps
             }
 
             /// <summary>A wall face; its texture runs along the edge and up the height, continuous between neighbours.</summary>
-            public void AddSide(Vector3 center, Vector3 a, Vector3 b, float lowA, float lowB, float high, Color col, float tile)
+            public void AddSide(Vector3 center, Vector3 a, Vector3 b, float lowA, float lowB, float highA, float highB, Color col, float tile)
             {
                 var outward = (a + b) / 2;
-                Vector3 a0 = center + a + Vector3.up * Mathf.Min(lowA, high), b0 = center + b + Vector3.up * Mathf.Min(lowB, high);
-                Vector3 a1 = center + a + Vector3.up * high, b1 = center + b + Vector3.up * high;
+                Vector3 a0 = center + a + Vector3.up * Mathf.Min(lowA, highA), b0 = center + b + Vector3.up * Mathf.Min(lowB, highB);
+                Vector3 a1 = center + a + Vector3.up * highA, b1 = center + b + Vector3.up * highB;
                 var along = (b - a).normalized;
                 Vector2 Uv(Vector3 p) => new Vector2(Vector3.Dot(p, along), p.y) / tile;
                 Tri(1, a0, b0, b1, Uv(a0), Uv(b0), Uv(b1), outward, col);
                 Tri(1, a0, b1, a1, Uv(a0), Uv(b1), Uv(a1), outward, col);
+            }
+
+            /// <summary>A fan from a centre point round a ring of points, on the tops' submesh with plan UVs.</summary>
+            public void AddFan(Vector3 middle, Vector3[] ring, Color col, float tile)
+            {
+                for (int i = 0; i < ring.Length; i++)
+                {
+                    Vector3 a = middle, b = ring[i], c = ring[(i + 1) % ring.Length];
+                    Tri(0, a, b, c, Plan(a, tile), Plan(b, tile), Plan(c, tile), Vector3.up, col);
+                }
+            }
+
+            /// <summary>A quad on a submesh, textured like a wall: along its top edge and up the height.</summary>
+            public void AddQuad(int sub, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward, Color col, float tile)
+            {
+                var along = new Vector3(b.x - a.x, 0, b.z - a.z).normalized;
+                Vector2 Uv(Vector3 p) => new Vector2(Vector3.Dot(p, along), p.y) / tile;
+                Tri(sub, a, b, c, Uv(a), Uv(b), Uv(c), outward, col);
+                Tri(sub, a, c, d, Uv(a), Uv(c), Uv(d), outward, col);
             }
 
             /// <summary>A thin flat strip along a top edge, inset from it.</summary>
@@ -355,6 +440,35 @@ namespace OrcHordeFps
                 if (layer >= 0) go.layer = layer;
                 go.isStatic = true;
             }
+        }
+    }
+
+    /// <summary>
+    /// The cyan line round every ledge: full in the build phase, where it shows
+    /// where towers go, faded to a trace in a fight, where it would only be noise.
+    /// </summary>
+    public sealed class BuildEdgeGlow : MonoBehaviour
+    {
+        const float InFight = 0.12f;
+        static readonly Color Dull = new Color(0.16f, 0.2f, 0.22f);
+        Material material;
+        Color colour;
+        float level = 1f;
+
+        public void Init(Material m)
+        {
+            material = m;
+            colour = m.color;
+        }
+
+        void Update()
+        {
+            var gm = GameManager.I;
+            float want = gm == null || gm.Phase != Phase.Combat ? 1f : InFight;
+            if (Mathf.Approximately(level, want)) return;
+            level = Mathf.MoveTowards(level, want, Time.deltaTime * 1.5f);
+            material.color = Color.Lerp(Dull, colour, level);
+            material.SetColor("_EmissionColor", colour * 1.2f * level);
         }
     }
 }

@@ -81,6 +81,12 @@ Across the campaign, 5–13% of the road within a tower's reach is hidden by the
 
 Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cell light and dark.
 
+**Rock and country.** Rock columns are weathered: a tilted crown, a bevel falling to the rim and now and then a broken corner, with grooves between neighbours so cliffs read as basalt columns. Their faces carry strata bands, and their tops wear the biome: moss, snow, sand or dust. Beyond the map a ring of hills and mountains (`World/Landscape.cs`) rises from just under the boundary cliffs into the fog. A valley runs out from every gate, and from the base where it sits by the edge, so the horde comes down a pass.
+
+**Scatter** (`World/Scatter.cs`, `Shaders/Scatter.shader`). Grass sways in the wind, with bushes, pebbles, boulders, dead trees, cacti and snow drifts by biome: grass round the rims of ledges, clear of where towers stand, the bigger pieces on rock tops and across the country beyond. The road keeps only a few pebbles, so the fight stays readable. Everything is a small procedural mesh drawn instanced, by chunk, with whole chunks skipped behind the camera or past the fog. The build keeps instancing shader variants (`ProjectSetup`), because the materials are made at runtime where the build can't see them.
+
+The cyan build outlines are full in the build phase and fade to a trace in a fight. Edges are smoothed with 4× MSAA.
+
 **Sky and light.** Each map is fought under its own mood (`World/Sky.cs`), set to suit it. The pause menu's Sky setting can force one everywhere.
 - **Day:** high sun, blue sky, drifting cumulus, crisp shadows.
 - **Dusk:** low orange sun, long shadows, a warm haze, torches lit at the gates and base.

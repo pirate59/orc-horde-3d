@@ -183,6 +183,8 @@ namespace OrcHordeFps
             RenderSettings.skybox = m;
 
             // Shadows crisp near the player and reaching across most of a map.
+            // Smooth edges on the hexes, the orcs and the rifle.
+            QualitySettings.antiAliasing = 4;
             QualitySettings.shadows = ShadowQuality.All;
             QualitySettings.shadowResolution = ShadowResolution.VeryHigh;
             QualitySettings.shadowProjection = ShadowProjection.StableFit;
