@@ -44,8 +44,10 @@ namespace OrcHordeFps
             var cam = camGo.AddComponent<Camera>();
             cam.nearClipPlane = 0.05f;
             cam.fieldOfView = 75f;
-            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.clearFlags = CameraClearFlags.Skybox;
             cam.backgroundColor = RenderSettings.fogColor;
+            cam.farClipPlane = 600f;
+            camGo.AddComponent<Bloom>();
             camGo.AddComponent<AudioListener>();
 
             var pc = go.AddComponent<PlayerController>();

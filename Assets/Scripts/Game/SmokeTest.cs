@@ -43,7 +43,7 @@ namespace OrcHordeFps
         static string outDir;
         static bool campaign;
         static int campaignMaps;
-        static bool buildTest, gallery, stress, armory, relief, abilitiesTest;
+        static bool buildTest, gallery, stress, armory, relief, abilitiesTest, skyTest;
         static int buildStage, expectTowers, expectWalls;
         static bool initialised;
         static bool gunner = true;
@@ -82,6 +82,11 @@ namespace OrcHordeFps
                     {
                         abilitiesTest = true;
                         queue = new Queue<string>(new[] { args[i + 1] });
+                    }
+                    if (args[i] == "-smokesky")
+                    {
+                        skyTest = true;
+                        queue = new Queue<string>(args[i + 1].Split(','));
                     }
                     if (args[i] == "-smokerelief")
                     {
@@ -162,7 +167,7 @@ namespace OrcHordeFps
                 Application.Quit();
                 yield break;
             }
-            yield return campaign ? Campaign() : relief ? ReliefShots() : Tour();
+            yield return campaign ? Campaign() : relief ? ReliefShots() : skyTest ? SkyShots() : Tour();
 
             queue?.Dequeue();
             bool more = queue != null && queue.Count > 0 && (!campaign || --campaignMaps > 0);
@@ -1018,12 +1023,78 @@ namespace OrcHordeFps
             Time.timeScale = 1f;
         }
 
+        /// <summary>
+        /// Every mood on one map, with towers up and the horde on the road: the
+        /// whole map from high up, and the view down the road from the player's
+        /// height. Night is shot again without bloom, to show what the glow adds.
+        /// </summary>
+        IEnumerator SkyShots()
+        {
+            var gm = GameManager.I;
+            var map = gm.Map;
+            PlaceLayout(gm);
+            gm.StartRound();
+            Time.timeScale = 3f;
+            float t = 0;
+            while (gm.Phase == Phase.Combat && t < 25f && Enemy.All.Count < 35) { t += Time.unscaledDeltaTime; yield return null; }
+            Time.timeScale = 0f;
+            Hud.Hidden = true;
+
+            // From beside the base, looking back up the road at the horde.
+            Vector3 crowd = map.Base;
+            if (Enemy.All.Count > 0)
+            {
+                crowd = Vector3.zero;
+                foreach (var e in Enemy.All) crowd += e.transform.position;
+                crowd /= Enemy.All.Count;
+            }
+            // On the road behind the horde's front, a little above head height, looking up at it.
+            var back = map.Base - crowd;
+            back.y = 0;
+            // Walk back from the horde towards the base until the spot is clear road, not under a cliff.
+            var eye = crowd;
+            for (float d = Mathf.Min(16f, back.magnitude * 0.6f); d > 3f; d -= 1f)
+            {
+                var spot = crowd + back.normalized * d;
+                if (!AbilityFields.OnRoad(spot) || Physics.Raycast(Relief.OnGround(spot) + Vector3.up * 0.5f, Vector3.up, 20f, Layers.RockMask)) continue;
+                eye = spot;
+                break;
+            }
+            eye = Relief.OnGround(eye) + Vector3.up * 3.2f;
+            var mid = new Vector3(map.Width / 2, 0, map.Depth / 2);
+            float span = Mathf.Max(map.Width, map.Depth);
+
+            foreach (Mood mood in System.Enum.GetValues(typeof(Mood)))
+            {
+                Sky.Apply(map, mood);
+                yield return null;
+                yield return Photo($"{map.id}-{mood.ToString().ToLower()}-wide", mid + new Vector3(span * 0.1f, span * 0.3f, -span * 0.6f), mid, 55f);
+                yield return Photo($"{map.id}-{mood.ToString().ToLower()}-road", eye, crowd + Vector3.up * 1.5f, 65f);
+                // Up at the sun or moon, over the map.
+                var light = -RenderSettings.sun.transform.forward;
+                var skyward = new Vector3(light.x, 0, light.z).normalized + Vector3.up * Mathf.Max(0.15f, light.y * 0.8f);
+                var from = Relief.OnGround(mid) + Vector3.up * 8f;
+                yield return Photo($"{map.id}-{mood.ToString().ToLower()}-sky", from, from + skyward * 10f, 70f);
+                if (mood == Mood.Night)
+                {
+                    Bloom.Enabled = false;
+                    yield return Photo($"{map.id}-night-road-nobloom", eye, crowd + Vector3.up * 1.5f, 65f);
+                    Bloom.Enabled = true;
+                }
+                Log($"{map.id,-18} {mood,-9} fog={RenderSettings.fogColor} sun={RenderSettings.sun.color} x{RenderSettings.sun.intensity:0.00}");
+            }
+            Sky.Apply(map);
+            Hud.Hidden = false;
+            Time.timeScale = 1f;
+        }
+
         /// <summary>One photograph from a free camera, with the player's own stood down and fog lifted.</summary>
         IEnumerator Photo(string name, Vector3 from, Vector3 at, float fov)
         {
             var player = PlayerController.I.Cam;
             var cam = new GameObject("Photo").AddComponent<Camera>();
             cam.CopyFrom(player);
+            cam.gameObject.AddComponent<Bloom>();
             cam.fieldOfView = fov;
             cam.farClipPlane = 400;
             cam.transform.SetPositionAndRotation(from, Quaternion.LookRotation(at - from));

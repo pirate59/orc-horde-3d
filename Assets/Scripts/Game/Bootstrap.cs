@@ -13,7 +13,7 @@ namespace OrcHordeFps
             var map = Session.Current;
             var grid = new HexGrid(map);
 
-            SetUpLighting(map);
+            Sky.Apply(map);
             // Towers wear the biome too: snow on their tops, dust or mud about their bases.
             OrcBiomes.Apply(TowerModels.Material, map.biome, 0.8f);
             var world = new GameObject("World").transform;
@@ -30,35 +30,6 @@ namespace OrcHordeFps
             Layouts.Restore(map.id);
             Sfx.Loop("wind_" + (map.biome ?? "dirt"), 0.3f);
             SmokeTest.AttachIfRequested();
-        }
-
-        /// <summary>A dusk light, tinted by the map's biome: cold over snow, warm over canyon.</summary>
-        static void SetUpLighting(MapData map)
-        {
-            var (sunColor, sky) = map.biome switch
-            {
-                "snow" => (U.Hex(0xdfe8ff), U.Hex(0x3a4250)),
-                "canyon" => (U.Hex(0xffc28a), U.Hex(0x3a2e2a)),
-                "grassland" => (U.Hex(0xfff0c8), U.Hex(0x2c3530)),
-                _ => (U.Hex(0xffd2a8), U.Hex(0x2a2f3a)),
-            };
-            var sun = new GameObject("Sun").AddComponent<Light>();
-            sun.type = LightType.Directional;
-            sun.color = sunColor;
-            sun.intensity = 1.15f;
-            sun.shadows = LightShadows.Soft;
-            sun.transform.rotation = Quaternion.Euler(38, -50, 0);
-
-            var dusk = sky;
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = U.Hex(0x5a6478);
-            RenderSettings.ambientEquatorColor = U.Hex(0x4a4440);
-            RenderSettings.ambientGroundColor = U.Hex(0x221e1a);
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = dusk;
-            RenderSettings.fogDensity = 0.012f;
-            RenderSettings.skybox = null;
         }
     }
 }

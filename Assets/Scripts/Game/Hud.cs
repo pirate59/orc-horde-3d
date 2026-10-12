@@ -273,7 +273,7 @@ namespace OrcHordeFps
             var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(18 * scale) };
             if (gm.MapMenuOpen) { DrawMapMenu(gm, btn); return; }
 
-            var r = new Rect(Screen.width / 2f - S(160), Screen.height / 2f - S(210), S(320), S(420));
+            var r = new Rect(Screen.width / 2f - S(170), Screen.height / 2f - S(245), S(340), S(490));
             Box(r, Panel);
             GUI.Label(new Rect(r.x, r.y + S(10), r.width, S(40)), "Paused", banner);
             float y = r.y + S(60);
@@ -287,6 +287,15 @@ namespace OrcHordeFps
             GUI.Label(new Rect(r.x + S(40), y, S(90), S(30)), "Volume", label);
             float vol = GUI.HorizontalSlider(new Rect(r.x + S(130), y + S(10), r.width - S(170), S(20)), Sfx.Volume, 0f, 1f);
             if (!Mathf.Approximately(vol, Sfx.Volume)) Sfx.Volume = vol;
+            y += S(50);
+            // Time of day: each map's own, or one forced everywhere.
+            GUI.Label(new Rect(r.x + S(40), y, S(90), S(30)), "Sky", label);
+            var choices = new Mood?[] { null, Mood.Day, Mood.Dusk, Mood.Night, Mood.Overcast };
+            int at = System.Array.IndexOf(choices, Sky.Override);
+            string name = Sky.Override.HasValue ? Sky.Override.Value.ToString() : $"Map's own ({Sky.Current})";
+            if (GUI.Button(new Rect(r.x + S(130), y, S(40), S(32)), "<", btn)) { Sky.Override = choices[(at + choices.Length - 1) % choices.Length]; Sky.Apply(gm.Map); }
+            GUI.Label(new Rect(r.x + S(176), y + S(2), r.width - S(260), S(30)), name, center);
+            if (GUI.Button(new Rect(r.xMax - S(80), y, S(40), S(32)), ">", btn)) { Sky.Override = choices[(at + 1) % choices.Length]; Sky.Apply(gm.Map); }
             y += S(50);
             if (Button("Choose map")) gm.MapMenuOpen = true;
             if (Button("Restart map")) gm.RestartMap();

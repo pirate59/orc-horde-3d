@@ -81,6 +81,14 @@ Across the campaign, 5–13% of the road within a tower's reach is hidden by the
 
 Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cell light and dark.
 
+**Sky and light.** Each map is fought under its own mood (`World/Sky.cs`), set to suit it. The pause menu's Sky setting can force one everywhere.
+- **Day:** high sun, blue sky, drifting cumulus, crisp shadows.
+- **Dusk:** low orange sun, long shadows, a warm haze, torches lit at the gates and base.
+- **Night:** a cold blue moon with long soft shadows, stars, deep blue haze. Torches burn warm at the gates and around the base, and fireflies drift over grass.
+- **Overcast:** flat grey light, heavy cloud, soft shadows.
+
+The sky is a procedural shader (`Shaders/Sky.shader`): a gradient dome, a sun or a cratered moon with its halo, fbm clouds lit from the light's side, and twinkling stars. Its horizon matches the fog, so the land fades into the sky without a seam. Snow maps get snowfall in every mood. A small bloom (`Core/Bloom.cs`, `Shaders/Bloom.shader`) makes emissive things glow, with each mood setting its own threshold, strength, tint and vignette: tower lights, muzzle flashes, beacons, the moon. Shadows use four cascades out to 90 m. None of this costs frame time with a full horde.
+
 **Orcs.** Each type is one procedurally built skinned mesh on a shared 20-bone skeleton (`Assets/Scripts/Actors/Orcs`), designed after Orc Horde's sprite briefs: build, palette, armour, weapon. One draw call per orc, skinned on the GPU. `OrcAnimator` drives the bones with no animation clips:
 - a walk cycle paced by actual speed
 - an overhead swing while attacking
@@ -180,6 +188,12 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/relief" -smokereli
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/abilities" -smokeabilities canyon_approach
+```
+
+**Sky:** on each listed map, places a layout, lets the horde in, then photographs it under every mood: the whole map, the road from behind the horde, and up at the sun or moon. Night is shot again without bloom:
+
+```bash
+Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/sky" -smokesky canyon_approach,rimefall_terraces
 ```
 
 **Armoury:** all five towers firing at immortal puppet orcs, then a close-up of each tower and the rifle idle, firing and reloading:
