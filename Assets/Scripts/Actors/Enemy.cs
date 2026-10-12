@@ -253,6 +253,8 @@ namespace OrcHordeFps
                 if (Def.SplitInto != null)
                     for (int i = 0; i < Def.SplitCount; i++) Spawn(Def.SplitInto, transform.position, 1.2f, Toughness);
                 Sfx.At("orc_death", AimPoint, 1f, Voice);
+                Combat.Blood(transform.position, Def.Radius * 4f + 0.8f);
+                if (Def.IsBoss) { Combat.HitStop(0.09f); Combat.Shake(transform.position, 0.5f, 30f); }
                 LeaveCorpse();
                 return;
             }
@@ -534,6 +536,9 @@ namespace OrcHordeFps
                 wallTarget.Damage(Def.WallDps);
                 Fx.Burst(contact + Vector3.up, 3f, U.Hex(0xff8a2a), 0.5f);
                 Sfx.At("explosion", contact);
+                Combat.Flash(contact + Vector3.up, U.Hex(0xff8a2a), 12f, 5f, 0.35f);
+                Combat.Scorch(contact, 1.6f);
+                Combat.Shake(contact, 0.4f, 18f);
                 Die(killed: false);
                 return;
             }

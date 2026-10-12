@@ -172,16 +172,25 @@ namespace OrcHordeFps
                 {
                     bool head = hit.collider.GetComponent<EnemyHead>() != null;
                     e.TakeDamage(Damage * Progression.RifleDamage, head, ray.origin);
+                    // A killing headshot holds the world still for a beat.
+                    if (head && !e.Alive) Combat.HitStop(0.05f);
+                    if (Random.value < 0.3f) Combat.Blood(hit.point, 0.6f);
                     HitMarkerUntil = Time.time + 0.12f;
                     LastHitWasHead = head;
                     Sfx.UI(head ? "headshot" : "hit");
                     Fx.Burst(hit.point, 0.25f, U.Hex(0x7a1010), 0.15f);
                 }
-                else Fx.Burst(hit.point, 0.15f, U.Hex(0xd8c8a0), 0.12f);
+                else
+                {
+                    Combat.Sparks(hit.point, hit.normal, U.Hex(0xffe0a0), 4);
+                    Combat.Dust(hit.point, hit.normal, new Color(0.55f, 0.5f, 0.45f, 0.55f));
+                    Combat.Debris(hit.point, 2.5f, U.Hex(0x6b5a48), 2);
+                }
             }
 
             Sfx.UI("rifle_shot");
-            Fx.Line(muzzle.position, end, U.Hex(0xfff0b0), 0.025f, 0.05f);
+            // A tracer hot enough to glow.
+            Fx.Line(muzzle.position, end, U.Hex(0xfff0b0) * 2.2f, 0.025f, 0.05f);
             Fx.Burst(muzzle.position, 0.09f, U.Hex(0xffe08a), 0.04f);
             flash.intensity = 4f;
             recoil = 1f;

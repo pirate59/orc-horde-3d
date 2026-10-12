@@ -42,12 +42,13 @@ namespace OrcHordeFps
             camGo.transform.SetParent(go.transform, false);
             camGo.transform.localPosition = new Vector3(0, EyeHeight, 0);
             var cam = camGo.AddComponent<Camera>();
-            cam.nearClipPlane = 0.05f;
+            cam.nearClipPlane = 0.1f;
             cam.fieldOfView = 75f;
             cam.clearFlags = CameraClearFlags.Skybox;
             cam.backgroundColor = RenderSettings.fogColor;
-            cam.farClipPlane = 600f;
-            camGo.AddComponent<Bloom>();
+            cam.farClipPlane = 300f;
+            camGo.AddComponent<PostFx>();
+            camGo.AddComponent<CameraShake>();
             camGo.AddComponent<AudioListener>();
 
             var pc = go.AddComponent<PlayerController>();

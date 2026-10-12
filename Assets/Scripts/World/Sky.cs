@@ -56,6 +56,9 @@ namespace OrcHordeFps
             public Color CloudLit, CloudShade;
             public float CloudCover;
             public float BloomThreshold, BloomIntensity, Vignette;
+            /// <summary>Ambient occlusion's strength, and the light shafts' strength and colour.</summary>
+            public float Occlusion = 0.7f, Shafts;
+            public Color ShaftColor = Color.white;
             public Color Tint = Color.white;
             public bool Torches;
         }
@@ -73,7 +76,7 @@ namespace OrcHordeFps
                 Moon = 1, Stars = 1,
                 CloudLit = U.Hex(0x4a5d86), CloudShade = U.Hex(0x0e1526), CloudCover = 0.28f,
                 BloomThreshold = 0.8f, BloomIntensity = 1.0f, Vignette = 1.1f, Tint = new Color(0.92f, 0.98f, 1.1f),
-                Torches = true,
+                Torches = true, Occlusion = 0.55f, Shafts = 0.5f, ShaftColor = U.Hex(0x8aa8ff),
             },
             Mood.Dusk => new Look
             {
@@ -81,10 +84,10 @@ namespace OrcHordeFps
                 AmbientSky = U.Hex(0x6a5a80), AmbientEquator = U.Hex(0x8a5a48), AmbientGround = U.Hex(0x2a1e1a),
                 Fog = U.Hex(0xb8705c), FogDensity = 0.009f,
                 Zenith = U.Hex(0x23305e), Horizon = U.Hex(0xe0875a), Below = U.Hex(0x3a2622), Curve = 0.55f,
-                Disc = U.Hex(0xffe0a8), DiscSize = 0.05f, Halo = U.Hex(0xff8a40), HaloPower = 10, HaloStrength = 0.9f,
+                Disc = U.Hex(0xffe0a8), DiscSize = 0.05f, Halo = U.Hex(0xff8a40), HaloPower = 14, HaloStrength = 0.65f,
                 CloudLit = U.Hex(0xffb080), CloudShade = U.Hex(0x4a3458), CloudCover = 0.5f,
-                BloomThreshold = 0.82f, BloomIntensity = 0.8f, Vignette = 0.8f, Tint = new Color(1.05f, 0.98f, 0.92f),
-                Torches = true,
+                BloomThreshold = 0.85f, BloomIntensity = 0.6f, Vignette = 0.8f, Tint = new Color(1.05f, 0.98f, 0.92f),
+                Torches = true, Occlusion = 0.7f, Shafts = 0.55f, ShaftColor = U.Hex(0xffc090),
             },
             Mood.Overcast => new Look
             {
@@ -95,6 +98,7 @@ namespace OrcHordeFps
                 Disc = U.Hex(0xf2f2ee), DiscSize = 0.03f, Halo = U.Hex(0xe8ecf0), HaloPower = 8, HaloStrength = 0.25f,
                 CloudLit = U.Hex(0xc8ced6), CloudShade = U.Hex(0x737c87), CloudCover = 0.88f,
                 BloomThreshold = 0.95f, BloomIntensity = 0.45f, Vignette = 0.7f,
+                Occlusion = 0.85f, Shafts = 0.1f, ShaftColor = U.Hex(0xe0e4e8),
             },
             _ => new Look
             {
@@ -105,6 +109,7 @@ namespace OrcHordeFps
                 Disc = U.Hex(0xfffbe8), DiscSize = 0.028f, Halo = U.Hex(0xfff0c8), HaloPower = 160, HaloStrength = 0.9f,
                 CloudLit = U.Hex(0xffffff), CloudShade = U.Hex(0x98a4b4), CloudCover = 0.42f,
                 BloomThreshold = 1f, BloomIntensity = 0.45f, Vignette = 0.6f,
+                Occlusion = 0.7f, Shafts = 0.35f, ShaftColor = U.Hex(0xfff4e0),
             },
         };
 
@@ -185,9 +190,10 @@ namespace OrcHordeFps
             QualitySettings.shadowDistance = 90f;
             QualitySettings.shadowCascade4Split = new Vector3(0.05f, 0.15f, 0.4f);
 
-            Bloom.Settings = new Bloom.Grade
+            PostFx.Settings = new PostFx.Grade
             {
                 Threshold = l.BloomThreshold, Intensity = l.BloomIntensity, Vignette = l.Vignette, Tint = l.Tint,
+                Occlusion = l.Occlusion, ShaftStrength = l.Shafts, ShaftColor = l.ShaftColor,
             };
 
             if (l.Torches) PlaceTorches(map, Current == Mood.Night ? 1f : 0.6f);

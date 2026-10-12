@@ -1077,12 +1077,39 @@ namespace OrcHordeFps
                 yield return Photo($"{map.id}-{mood.ToString().ToLower()}-sky", from, from + skyward * 10f, 70f);
                 if (mood == Mood.Night)
                 {
-                    Bloom.Enabled = false;
+                    PostFx.BloomOn = false;
                     yield return Photo($"{map.id}-night-road-nobloom", eye, crowd + Vector3.up * 1.5f, 65f);
-                    Bloom.Enabled = true;
+                    PostFx.BloomOn = true;
+                }
+                if (mood == Mood.Day)
+                {
+                    PostFx.OcclusionOn = false;
+                    yield return Photo($"{map.id}-day-road-noao", eye, crowd + Vector3.up * 1.5f, 65f);
+                    PostFx.OcclusionOn = true;
+                    for (int view = 1; view <= 3; view++)
+                    {
+                        PostFx.DebugView = view;
+                        yield return Photo($"{map.id}-debug-{(view == 1 ? "ao" : view == 2 ? "shafts" : "depth")}", eye, crowd + Vector3.up * 1.5f, 65f);
+                    }
+                    PostFx.DebugView = 0;
+                }
+                if (mood == Mood.Dusk)
+                {
+                    PostFx.ShaftsOn = false;
+                    yield return Photo($"{map.id}-dusk-sky-noshafts", from, from + skyward * 10f, 70f);
+                    PostFx.ShaftsOn = true;
                 }
                 Log($"{map.id,-18} {mood,-9} fog={RenderSettings.fogColor} sun={RenderSettings.sun.color} x{RenderSettings.sun.intensity:0.00}");
             }
+            // A mortar into the horde at night: the blast lights the road, then leaves its scorch.
+            Sky.Apply(map, Mood.Night);
+            Time.timeScale = 1f;
+            Hud.Hidden = true;
+            PlayerAbilities.I.Fire(Abilities.Mortar, Relief.OnGround(crowd), Vector3.forward, force: true);
+            yield return new WaitForSeconds(0.93f);
+            yield return Photo($"{map.id}-night-blast", eye, crowd + Vector3.up * 1.5f, 65f);
+            yield return new WaitForSeconds(1.2f);
+            yield return Photo($"{map.id}-night-scorch", eye, crowd + Vector3.up * 1.5f, 65f);
             Sky.Apply(map);
             Hud.Hidden = false;
             Time.timeScale = 1f;
@@ -1094,7 +1121,7 @@ namespace OrcHordeFps
             var player = PlayerController.I.Cam;
             var cam = new GameObject("Photo").AddComponent<Camera>();
             cam.CopyFrom(player);
-            cam.gameObject.AddComponent<Bloom>();
+            cam.gameObject.AddComponent<PostFx>();
             cam.fieldOfView = fov;
             cam.farClipPlane = 400;
             cam.transform.SetPositionAndRotation(from, Quaternion.LookRotation(at - from));

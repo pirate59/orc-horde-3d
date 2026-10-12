@@ -262,6 +262,7 @@ namespace OrcHordeFps
             var aim = Lead(target, Def.ProjectileSpeed);
             Projectile.Fire(muzzle.position, (aim - muzzle.position).normalized, Def, Damage, SightMask);
             Sfx.At("mg_shot", muzzle.position);
+            if (Random.value < 0.35f) Combat.Flash(muzzle.position, U.Hex(0xffd27a), 4f, 1.6f, 0.06f);
             Fx.Burst(muzzle.position, 0.28f, U.Hex(0xffd27a), 0.05f);
             // Spent brass, out of the right side and onto the ground.
             if (rig.Ejector != null && Random.value < 0.6f)
@@ -275,6 +276,7 @@ namespace OrcHordeFps
             aim.y = target.transform.position.y;
             Shell.Lob(muzzle.position, aim, Def.ProjectileSpeed, Stats.Splash, Damage, Def.Color);
             Sfx.At("cannon_fire", muzzle.position);
+            Combat.Flash(muzzle.position, U.Hex(0xffb050), 7f, 3f, 0.12f);
             Fx.Burst(muzzle.position, 0.6f, U.Hex(0xffd27a), 0.1f);
             kick = 0.24f;
             // A gout of smoke from the muzzle, drifting up.
@@ -328,6 +330,8 @@ namespace OrcHordeFps
             Fx.Polyline(points.ToArray(), Def.Color, 0.07f, 0.09f);
             Fx.Polyline(points.ToArray(), Color.white, 0.025f, 0.06f);
             Sfx.At("laser_zap", muzzle.position);
+            Combat.Flash(points[points.Count - 1], Def.Color, 5f, 2f, 0.1f);
+            Combat.Sparks(points[points.Count - 1], -dir, Def.Color, 3);
             Fx.Burst(points[points.Count - 1], 0.25f, Def.Color, 0.12f);
             flash = 1f;
         }
@@ -356,6 +360,7 @@ namespace OrcHordeFps
             }
             Fx.Ring(transform.position + Vector3.up * 0.4f, Range, Def.Color, 0.45f);
             Sfx.At("arc_zap", muzzle.position);
+            Combat.Flash(muzzle.position, Def.Color, Range * 0.8f, 2.5f, 0.15f);
             flash = 1f;
         }
 
@@ -372,6 +377,7 @@ namespace OrcHordeFps
                 e.Burn(0.8f);
             }
             Sfx.At("flame_burst", muzzle.position);
+            if (Random.value < 0.5f) Combat.Flash(muzzle.position + head.forward * 2f, U.Hex(0xff7a20), Range * 0.9f, 2.2f, 0.15f);
             // The jet: many small, see-through tongues, hotter (yellower) nearer the nozzle.
             for (int i = 0; i < 6; i++)
             {

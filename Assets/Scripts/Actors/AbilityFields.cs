@@ -331,6 +331,10 @@ namespace OrcHordeFps
                 Fx.Burst(m.At + Vector3.up * 0.4f, m.Radius, U.Hex(0xffa040), 0.4f);
                 Fx.Burst(m.At + Vector3.up * 0.8f, m.Radius * 0.5f, U.Hex(0xfff0a0), 0.2f);
                 Sfx.At("explosion", m.At, 0.9f, 1.15f);
+                Combat.Flash(m.At + Vector3.up * 0.8f, U.Hex(0xff8a40), m.Radius * 4f, 4.5f, 0.3f);
+                Combat.Scorch(m.At, m.Radius * 0.5f);
+                Combat.Debris(m.At, 6f, U.Hex(0x6b5a48), 5);
+                Combat.Shake(m.At, 0.3f, 16f);
                 Destroy(m.Visual);
             }
             mines.RemoveAll(going.Contains);
@@ -352,6 +356,9 @@ namespace OrcHordeFps
                     Fx.Line(impact + Vector3.up * 18f, impact, new Color(1f, 0.85f, 0.6f, 0.7f), 0.08f, 0.12f);
                     Fx.Burst(impact + Vector3.up * 0.4f, b.ShellRadius, U.Hex(0xffa040), 0.3f);
                     Sfx.At("explosion", impact, 0.7f, 1.1f);
+                    Combat.Flash(impact + Vector3.up * 0.8f, U.Hex(0xffa040), b.ShellRadius * 5f, 4f, 0.25f);
+                    Combat.Scorch(impact, b.ShellRadius * 0.5f);
+                    Combat.Shake(impact, 0.15f, 20f);
                     if (b.Incendiary)
                     {
                         if (fires.Count >= MostFires) fires.RemoveAt(0);
@@ -394,6 +401,9 @@ namespace OrcHordeFps
                         Damage.Splash(b.At, b.OverloadRadius, b.Damage);
                         Fx.Burst(b.At + Vector3.up, b.OverloadRadius, U.Hex(0x5effc4), 0.5f);
                         Sfx.At("explosion", b.At, 1.1f, 0.8f);
+                        Combat.Flash(b.At + Vector3.up, U.Hex(0x5effc4), b.OverloadRadius * 4f, 6f, 0.4f);
+                        Combat.Scorch(b.At, b.OverloadRadius * 0.5f);
+                        Combat.Shake(b.At, 0.45f, 22f);
                     }
                     else Fx.Burst(b.At + Vector3.up * 3f, 1.5f, U.Hex(0x5effc4), 0.4f);
                     Destroy(b.Visual);

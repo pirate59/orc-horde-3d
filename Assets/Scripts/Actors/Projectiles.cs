@@ -11,7 +11,7 @@ namespace OrcHordeFps
 
         public static void Fire(Vector3 from, Vector3 dir, TowerDef def, float damage, int sightMask)
         {
-            var go = Shapes.Prim(PrimitiveType.Sphere, null, from, new Vector3(0.09f, 0.09f, 0.6f), Mats.Unlit(def.Color * 1.4f));
+            var go = Shapes.Prim(PrimitiveType.Sphere, null, from, new Vector3(0.09f, 0.09f, 0.6f), Mats.Unlit(def.Color * 2.6f));
             go.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             go.transform.rotation = Quaternion.LookRotation(dir);
             var p = go.AddComponent<Projectile>();
@@ -32,8 +32,17 @@ namespace OrcHordeFps
                     QueryTriggerInteraction.Ignore))
             {
                 var e = hit.collider.GetComponentInParent<Enemy>();
-                if (e != null) e.TakeDamage(damage, from: transform.position);
-                Fx.Burst(hit.point, 0.2f, U.Hex(0xffe08a), 0.08f);
+                if (e != null)
+                {
+                    e.TakeDamage(damage, from: transform.position);
+                    Fx.Burst(hit.point, 0.18f, U.Hex(0x6a0c0c), 0.1f);
+                    if (Random.value < 0.15f) Combat.Blood(hit.point, 0.5f);
+                }
+                else
+                {
+                    Combat.Sparks(hit.point, hit.normal, U.Hex(0xffd27a), 3);
+                    Combat.Dust(hit.point, hit.normal, new Color(0.5f, 0.45f, 0.4f, 0.5f));
+                }
                 Destroy(gameObject);
                 return;
             }
@@ -70,6 +79,10 @@ namespace OrcHordeFps
             if (k < 1f) return;
             Damage.Splash(to, splash, damage);
             Sfx.At("explosion", to, 0.8f);
+            Combat.Flash(to + Vector3.up * 0.8f, U.Hex(0xffa040), splash * 5f, 5f, 0.3f);
+            Combat.Scorch(to, splash * 0.55f);
+            Combat.Debris(to, 6f, U.Hex(0x6b5a48), 6);
+            Combat.Shake(to, 0.3f, 16f);
             // A short, hot fireball, a ring along the ground showing the splash's reach, and smoke.
             Fx.Burst(to + Vector3.up * 0.4f, splash * 0.45f, U.Hex(0xffc060), 0.22f);
             Fx.Ring(to + Vector3.up * 0.1f, splash, U.Hex(0xff8a30), 0.35f);

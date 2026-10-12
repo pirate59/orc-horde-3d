@@ -155,6 +155,10 @@ namespace OrcHordeFps
             }
             Destroy(shell);
             Damage.Splash(point, Progression.AbilityRadius(Abilities.Mortar), Progression.AbilityDamage(Abilities.Mortar));
+            Combat.Flash(point + Vector3.up, U.Hex(0xffa040), Progression.AbilityRadius(Abilities.Mortar) * 5f, 7f, 0.4f);
+            Combat.Scorch(point, Progression.AbilityRadius(Abilities.Mortar) * 0.75f);
+            Combat.Debris(point, 8f, U.Hex(0x6b5a48), 10);
+            Combat.Shake(point, 0.6f, 26f);
             Sfx.At("explosion", point, 1.2f, 0.85f);
             Fx.Burst(point + Vector3.up * 0.5f, Progression.AbilityRadius(Abilities.Mortar), U.Hex(0xffa040), 0.5f);
             Fx.Burst(point + Vector3.up * 1.5f, Progression.AbilityRadius(Abilities.Mortar) * 0.6f, U.Hex(0xfff0a0), 0.25f);
@@ -169,7 +173,13 @@ namespace OrcHordeFps
             {
                 var p = start + forward * step * i;
                 Damage.Splash(p, Abilities.BombingRun.Width / 2, Progression.AbilityDamage(Abilities.BombingRun), struck);
-                if (i % 2 == 0) Sfx.At("explosion", p, 0.9f);
+                if (i % 2 == 0)
+                {
+                    Sfx.At("explosion", p, 0.9f);
+                    Combat.Flash(p + Vector3.up, U.Hex(0xffa040), Abilities.BombingRun.Width * 3f, 4f, 0.3f);
+                }
+                Combat.Scorch(p, Abilities.BombingRun.Width * 0.35f);
+                Combat.Shake(p, 0.18f, 22f);
                 Fx.Burst(p + Vector3.up * 0.5f, Abilities.BombingRun.Width / 2, U.Hex(0xffa040), 0.4f);
                 yield return new WaitForSeconds(StrafeSeconds / StrafeBursts);
             }

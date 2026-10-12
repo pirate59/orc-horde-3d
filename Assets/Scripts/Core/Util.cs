@@ -165,9 +165,9 @@ namespace OrcHordeFps
         }
 
         /// <summary>A small cylinder flung out and falling: a spent cartridge case.</summary>
-        public static void Casing(Vector3 pos, Vector3 velocity, Color c, float size, float life)
+        public static void Casing(Vector3 pos, Vector3 velocity, Color c, float size, float life, float glow = 0f)
         {
-            var go = Shapes.Prim(PrimitiveType.Cylinder, null, pos, new Vector3(size, size * 2f, size), Mats.Lit(c));
+            var go = Shapes.Prim(PrimitiveType.Cylinder, null, pos, new Vector3(size, size * 2f, size), Mats.Lit(c, glow));
             go.transform.rotation = Random.rotation;
             go.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             go.AddComponent<FxFade>().Init(life, c, go.transform.localScale, velocity, gravity: 9.8f, fade: false, spin: 900f);
@@ -287,7 +287,13 @@ namespace OrcHordeFps
             if (k >= 1f) { Destroy(gameObject); return; }
             velocity += Vector3.down * gravity * Time.deltaTime;
             transform.position += velocity * Time.deltaTime;
-            if (gravity > 0 && transform.position.y < 0.02f) { velocity = Vector3.zero; gravity = 0; spin = 0; }
+            // Lands on the land, wherever the hills put it.
+            if (gravity > 0 && velocity.y < 0 && transform.position.y < Relief.Ground(transform.position) + 0.02f)
+            {
+                var p = transform.position;
+                transform.position = new Vector3(p.x, Relief.Ground(p) + 0.02f, p.z);
+                velocity = Vector3.zero; gravity = 0; spin = 0;
+            }
             if (spin != 0) transform.Rotate(spin * Time.deltaTime, 0, spin * 0.6f * Time.deltaTime);
             if (fade) Apply(k);
         }

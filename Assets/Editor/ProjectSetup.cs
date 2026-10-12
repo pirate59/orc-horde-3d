@@ -70,7 +70,7 @@ public static class ProjectSetup
     {
         var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset")[0]);
         var list = settings.FindProperty("m_AlwaysIncludedShaders");
-        foreach (var name in new[] { "Standard", "Sprites/Default", "OrcHorde/VertexLit", "OrcHorde/TexturedVertexLit", "OrcHorde/Orc", "OrcHorde/Sky", "Hidden/OrcHorde/Bloom" })
+        foreach (var name in new[] { "Standard", "Sprites/Default", "OrcHorde/VertexLit", "OrcHorde/TexturedVertexLit", "OrcHorde/Orc", "OrcHorde/Sky", "Hidden/OrcHorde/PostFx" })
         {
             var shader = Shader.Find(name);
             bool present = false;

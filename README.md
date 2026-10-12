@@ -87,7 +87,20 @@ Terrain uses world-space UVs and a textured vertex-lit shader that keeps per-cel
 - **Night:** a cold blue moon with long soft shadows, stars, deep blue haze. Torches burn warm at the gates and around the base, and fireflies drift over grass.
 - **Overcast:** flat grey light, heavy cloud, soft shadows.
 
-The sky is a procedural shader (`Shaders/Sky.shader`): a gradient dome, a sun or a cratered moon with its halo, fbm clouds lit from the light's side, and twinkling stars. Its horizon matches the fog, so the land fades into the sky without a seam. Snow maps get snowfall in every mood. A small bloom (`Core/Bloom.cs`, `Shaders/Bloom.shader`) makes emissive things glow, with each mood setting its own threshold, strength, tint and vignette: tower lights, muzzle flashes, beacons, the moon. Shadows use four cascades out to 90 m. None of this costs frame time with a full horde.
+The sky is a procedural shader (`Shaders/Sky.shader`): a gradient dome, a sun or a cratered moon with its halo, fbm clouds lit from the light's side, and twinkling stars. Its horizon matches the fog, so the land fades into the sky without a seam. Snow maps get snowfall in every mood. Post-processing (`Core/PostFx.cs`, `Shaders/PostFx.shader`) is plain fragment shaders, so it runs on any GPU and in a browser:
+- **Ambient occlusion:** soft darkening where surfaces meet (column bases, ledge edges, under orcs). Worked out at half size from the depth buffer, counting only samples that rise steeply above the surface so the depth buffer's own steps never band, then blurred without bleeding over edges. It fades into the fog at range.
+- **Light shafts:** rays from the sun or moon, carrying the sky's own light past rock, towers and orcs. Warm at dusk, blue at night, faint under cloud.
+- **Bloom:** emissive things glow: tower lights, muzzle flashes, tracers, sparks, beacons, the moon.
+- **Grade:** each mood's tint and vignette.
+
+Each mood sets its own strengths. Shadows use four cascades out to 90 m. None of this costs frame time with a full horde.
+
+**Combat effects** (`Core/Combat.cs`), all pooled:
+- **Light:** every blast and muzzle throws a brief flash. A mortar lights up the road at night.
+- **Marks:** explosions leave scorch marks and dying orcs leave blood, laid on whatever slope is underneath. They fade after a while.
+- **Impacts:** sparks bright enough to glow, and dust and chips where shots hit rock and ground.
+- **Tracers:** rifle and Machine Gun tracers glow.
+- **Feel:** blasts near you shake the view, hard close up and nothing past their reach. A killing headshot or a boss going down holds the world still for a beat.
 
 **Orcs.** Each type is one procedurally built skinned mesh on a shared 20-bone skeleton (`Assets/Scripts/Actors/Orcs`), designed after Orc Horde's sprite briefs: build, palette, armour, weapon. One draw call per orc, skinned on the GPU. `OrcAnimator` drives the bones with no animation clips:
 - a walk cycle paced by actual speed
@@ -190,7 +203,7 @@ Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/relief" -smokereli
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/abilities" -smokeabilities canyon_approach
 ```
 
-**Sky:** on each listed map, places a layout, lets the horde in, then photographs it under every mood: the whole map, the road from behind the horde, and up at the sun or moon. Night is shot again without bloom:
+**Sky:** on each listed map, places a layout, lets the horde in, then photographs it under every mood: the whole map, the road from behind the horde, and up at the sun or moon. Night is shot again without bloom, day without occlusion (plus the occlusion, shafts and depth buffers on their own), dusk without shafts, and a mortar is fired into the horde at night to show the blast lighting the road and the scorch it leaves:
 
 ```bash
 Builds/OrcHordeFPS.app/Contents/MacOS/* -smoketest "$PWD/Logs/sky" -smokesky canyon_approach,rimefall_terraces
